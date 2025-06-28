@@ -18,15 +18,16 @@ start_time = st.sidebar.number_input("Start Time (s)", value=280)
 end_time = st.sidebar.number_input("End Time (s)", value=499)
 auto_detect = st.sidebar.checkbox("Auto-detect spikes", value=False)
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
+custom_yaxis = st.sidebar.checkbox("Set Y-axis manually", value=False)
 
-# Default for manual spike setup
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
 spike_count = st.sidebar.number_input("Spike Count", value=10)
 conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
 
-yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=-20)
-yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100)
+if custom_yaxis:
+    yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=0.0)
+    yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100.0)
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
@@ -40,7 +41,6 @@ if uploaded_file:
     current_nA = plot_df[CURRENT_COL].values * 1e9
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
-    # Auto spike detection
     if auto_detect:
         peaks, _ = find_peaks(smoothed, distance=spike_interval * 5, height=np.nanmean(smoothed) + 5)
         spike_times = time[peaks][:spike_count]
@@ -75,7 +75,6 @@ if uploaded_file:
         baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9
         LOD = (3 * baseline_std) / slope
 
-        # --- PLOTS ---
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
         if overlay_raw:
@@ -91,15 +90,23 @@ if uploaded_file:
         ax1.set_ylabel("Current /nA", fontsize=14)
         ax1.set_title("A", loc='left', fontsize=16, fontweight='bold')
         ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
-        ax1.set_ylim(yaxis_min, yaxis_max)
+
+        if custom_yaxis:
+            ax1.set_ylim(yaxis_min, yaxis_max)
+        else:
+            y_min = np.nanmin(smoothed)
+            y_max = np.nanmax(smoothed)
+            margin = (y_max - y_min) * 0.1
+            ax1.set_ylim(y_min - margin, y_max + margin)
+
         ax1.legend()
         for spine in ax1.spines.values():
             spine.set_linewidth(1.2)
 
-        ax2.errorbar(valid_concs, y, fmt='o', color='red', label="Data", yerr=2)
+        ax2.scatter(valid_concs, y, color='red', label="Data")
         ax2.plot(valid_concs, y_pred, color='black', label="Fit")
         ax2.text(0.55, 0.15,
-                 f'y = {slope:.3f}x + {intercept:.3f}\n$R^2$ = {r2:.3f}\nLOD = {LOD:.2f} µM\nSensitivity = {slope:.2f} nA/µM',
+                 f'y = {slope:.3f}x + {intercept:.3f}\\n$R^2$ = {r2:.3f}\\nLOD = {LOD:.2f} µM\\nSensitivity = {slope:.2f} nA/µM',
                  transform=ax2.transAxes, fontsize=10,
                  bbox=dict(facecolor='white', edgecolor='black'))
         ax2.set_xlabel("Concentration /µM", fontsize=14)
@@ -113,7 +120,6 @@ if uploaded_file:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # --- Download buttons ---
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
         st.download_button("📷 Download Figure", buf.getvalue(), file_name=f"{label}_figure.png", mime="image/png")
@@ -132,3 +138,4 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
