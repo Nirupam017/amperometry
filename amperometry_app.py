@@ -35,15 +35,20 @@ start_time = st.sidebar.number_input("Start Time (s)", value=280)
 end_time = st.sidebar.number_input("End Time (s)", value=499)
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 custom_yaxis = st.sidebar.checkbox("Set Y-axis manually", value=False)
+custom_xaxis = st.sidebar.checkbox("Set X-axis manually", value=False)
 
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
 spike_count = st.sidebar.number_input("Spike Count", value=10)
-conc_per_spike = st.sidebar.number_input("Conc/Spike (\u00b5M)", value=20.0)
+conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
 
 if custom_yaxis:
     yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=0.0)
     yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100.0)
+
+if custom_xaxis:
+    xaxis_min = st.sidebar.number_input("X-axis Min (s)", value=start_time)
+    xaxis_max = st.sidebar.number_input("X-axis Max (s)", value=end_time)
 
 # --- File Uploaded ---
 if uploaded_file:
@@ -94,7 +99,7 @@ if uploaded_file:
         ax1.plot(time, smoothed, color='red', linewidth=1.5)
         for t, conc in zip(spike_times, concentrations):
             yval = np.interp(t, time, smoothed)
-            ax1.annotate(f"{conc:.0f} \u00b5M", xy=(t, yval), xytext=(t, yval + 5),
+            ax1.annotate(f"{conc:.0f} µM", xy=(t, yval), xytext=(t, yval + 5),
                          arrowprops=dict(arrowstyle='->'), ha='center', fontsize=9)
 
         ax1.set_xlabel("t /s", fontsize=14, fontweight='bold')
@@ -115,9 +120,12 @@ if uploaded_file:
             margin = (y_max - y_min) * 0.1
             ax1.set_ylim(y_min - margin, y_max + margin)
 
+        if custom_xaxis:
+            ax1.set_xlim(xaxis_min, xaxis_max)
+
         ax2.scatter(valid_concs, y, color='red', s=60, edgecolor='black')
         ax2.plot(valid_concs, y_pred, color='black', linewidth=2)
-        ax2.set_xlabel("Concentration /\u00b5M", fontsize=14, fontweight='bold')
+        ax2.set_xlabel("Concentration /µM", fontsize=14, fontweight='bold')
         ax2.set_ylabel("Current /nA", fontsize=14, fontweight='bold')
         ax2.set_title("B", loc='left', fontsize=16, fontweight='bold')
         ax2.set_xticks(valid_concs)
@@ -127,11 +135,10 @@ if uploaded_file:
         for spine in ax2.spines.values():
             spine.set_linewidth(1.5)
 
-        # Box with regression info
         textstr = '\n'.join([
             rf"$R^2$ = {r2:.4f}",
-            rf"LOD = {LOD:.2f} \u00b5M",
-            rf"Sensitivity = {slope:.2f} nA/\u00b5M",
+            rf"LOD = {LOD:.2f} µM",
+            rf"Sensitivity = {slope:.2f} nA/µM",
             rf"Fit: y = {slope:.2f}x + {intercept:.2f}"
         ])
         props = dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='black', linewidth=1.5)
@@ -147,18 +154,19 @@ if uploaded_file:
 
         result_df = pd.DataFrame({
             "Spike Time (s)": valid_spike_times,
-            "Concentration (\u00b5M)": valid_concs,
+            "Concentration (µM)": valid_concs,
             "Avg Current (nA)": y,
             "Predicted Current (nA)": y_pred
         })
         st.download_button("📄 Download CSV Result Table", result_df.to_csv(index=False), file_name=f"{label}_results.csv")
 
         st.success(f"✅ Done! Label: **{label}**")
-        st.markdown(f"- **Sensitivity**: `{slope:.2f} nA/\u00b5M`")
-        st.markdown(f"- **LOD**: `{LOD:.2f} \u00b5M`")
+        st.markdown(f"- **Sensitivity**: `{slope:.2f} nA/µM`")
+        st.markdown(f"- **LOD**: `{LOD:.2f} µM`")
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
 
 
