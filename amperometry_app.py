@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
-from scipy.signal import find_peaks
 
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
@@ -16,7 +15,7 @@ uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 label = st.sidebar.text_input("Label", value="sensor1")
 start_time = st.sidebar.number_input("Start Time (s)", value=280)
 end_time = st.sidebar.number_input("End Time (s)", value=499)
-auto_detect = st.sidebar.checkbox("Auto-detect spikes", value=False)
+
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 custom_yaxis = st.sidebar.checkbox("Set Y-axis manually", value=False)
 
@@ -41,13 +40,8 @@ if uploaded_file:
     current_nA = plot_df[CURRENT_COL].values * 1e9
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
-    if auto_detect:
-        peaks, _ = find_peaks(smoothed, distance=spike_interval * 5, height=np.nanmean(smoothed) + 5)
-        spike_times = time[peaks][:spike_count]
-        concentrations = np.arange(conc_per_spike, conc_per_spike * (len(spike_times) + 1), conc_per_spike)
-    else:
-        spike_times = np.arange(spike_start, spike_start + spike_interval * spike_count, spike_interval)
-        concentrations = np.arange(conc_per_spike, conc_per_spike * spike_count + 1, conc_per_spike)
+    spike_times = np.arange(spike_start, spike_start + spike_interval * spike_count, spike_interval)
+    concentrations = np.arange(conc_per_spike, conc_per_spike * spike_count + 1, conc_per_spike)
 
     spike_currents = []
     valid_concs = []
@@ -78,9 +72,9 @@ if uploaded_file:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
         if overlay_raw:
-            ax1.plot(time, current_nA, color='lightgray', linewidth=0.8, label="Raw")
+            ax1.plot(time, current_nA, color='lightgray', linewidth=0.8)
 
-        ax1.plot(time, smoothed, color='red', linewidth=1.5, label="Smoothed")
+        ax1.plot(time, smoothed, color='red', linewidth=1.5)
         for t, conc in zip(spike_times, concentrations):
             yval = np.interp(t, time, smoothed)
             ax1.annotate(f"{conc:.0f} µM", xy=(t, yval), xytext=(t, yval + 5),
@@ -99,21 +93,23 @@ if uploaded_file:
             margin = (y_max - y_min) * 0.1
             ax1.set_ylim(y_min - margin, y_max + margin)
 
-        ax1.legend()
         for spine in ax1.spines.values():
             spine.set_linewidth(1.2)
 
-        ax2.scatter(valid_concs, y, color='red', label="Data")
-        ax2.plot(valid_concs, y_pred, color='black', label="Fit")
-        ax2.text(0.55, 0.15,
-                 f'y = {slope:.3f}x + {intercept:.3f}\\n$R^2$ = {r2:.3f}\\nLOD = {LOD:.2f} µM\\nSensitivity = {slope:.2f} nA/µM',
-                 transform=ax2.transAxes, fontsize=10,
-                 bbox=dict(facecolor='white', edgecolor='black'))
+        ax2.scatter(valid_concs, y, color='red')
+        ax2.plot(valid_concs, y_pred, color='black')
+
+        # Split lines for better readability
+        ax2.text(0.05, 0.85, f'y = {slope:.3f}x + {intercept:.3f}', transform=ax2.transAxes, fontsize=10)
+        ax2.text(0.05, 0.75, f'$R^2$ = {r2:.4f}', transform=ax2.transAxes, fontsize=10)
+        ax2.text(0.05, 0.65, f'LOD = {LOD:.2f} µM', transform=ax2.transAxes, fontsize=10)
+        ax2.text(0.05, 0.55, f'Sensitivity = {slope:.2f} nA/µM', transform=ax2.transAxes, fontsize=10)
+
         ax2.set_xlabel("Concentration /µM", fontsize=14)
         ax2.set_ylabel("Current /nA", fontsize=14)
         ax2.set_title("B", loc='left', fontsize=16, fontweight='bold')
         ax2.set_xticks(valid_concs)
-        ax2.legend(loc='lower right', fontsize=10)
+
         for spine in ax2.spines.values():
             spine.set_linewidth(1.2)
 
@@ -138,4 +134,5 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
