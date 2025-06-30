@@ -7,7 +7,7 @@ from io import BytesIO
 from scipy.signal import savgol_filter
 from scipy.stats import linregress
 import matplotlib.cm as cm
-
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 # --- App Config ---
 st.set_page_config(layout="wide")
 st.title("📈 CV Analysis + Scan Rate Study Tool")
