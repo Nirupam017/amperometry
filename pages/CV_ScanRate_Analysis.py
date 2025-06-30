@@ -3,42 +3,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from io import BytesIO
-from scipy.signal import savgol_filter
 from scipy.stats import linregress
 import matplotlib.cm as cm
 import csv
+import io
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 st.title("📈 CV Overlay + Scan Rate Study Tool")
 
-# Theme toggle
+# === Theme Toggle ===
 theme = st.sidebar.radio("Theme", ["Dark", "Light"], index=0)
-plt.style.use('dark_background' if theme == "Dark" else 'default')
-bg_color = 'black' if theme == "Dark" else 'white'
-font_color = 'white' if theme == "Dark" else 'black'
+plt.style.use("dark_background" if theme == "Dark" else "default")
+bg_color = "black" if theme == "Dark" else "white"
+font_color = "white" if theme == "Dark" else "black"
 
-# === 1. CV OVERLAY ===
+# === Safe CSV Reader ===
+def read_cv_file(file):
+    if file.name.endswith('.csv'):
+        content = file.read().decode("utf-8")
+        file.seek(0)
+        try:
+            delimiter = csv.Sniffer().sniff(content[:1024], delimiters=";,").delimiter
+        except csv.Error:
+            delimiter = ";" if ";" in content else ","
+        df = pd.read_csv(io.StringIO(content), sep=delimiter)
+    else:
+        df = pd.read_excel(file)
+    return df
+
+# === CV Overlay ===
 st.header("1️⃣ CV Overlay")
 num_cv_files = st.number_input("Number of CV files:", 1, 20, 3)
-cv_files = st.file_uploader("Upload CV files (CSV/XLSX)", type=["csv", "xlsx"], accept_multiple_files=True, key="cv")
+cv_files = st.file_uploader("Upload CV files (CSV/XLSX):", type=['csv', 'xlsx'], accept_multiple_files=True, key='cv')
 
 if len(cv_files) == num_cv_files:
     fig1, ax1 = plt.subplots(figsize=(10, 6))
     cmap1 = cm.get_cmap('viridis', num_cv_files)
 
     for i, file in enumerate(cv_files):
-        # Detect delimiter if CSV
-        if file.name.endswith(".csv"):
-            first_line = file.read(1024).decode("utf-8")
-            file.seek(0)
-            delimiter = csv.Sniffer().sniff(first_line, delimiters=";,").delimiter
-            df = pd.read_csv(file, sep=delimiter)
-        else:
-            df = pd.read_excel(file)
-
+        df = read_cv_file(file)
         voltage = df.iloc[:, 0].values
         current = df.iloc[:, 1].values
-        label = file.name.split('.')[0].replace("_", " ")
+        label = file.name.split('.')[0].replace('_', ' ')
         ax1.plot(voltage, current, label=label, color=cmap1(i), linewidth=2)
 
     ax1.set_title("CV Overlay", color=font_color, fontsize=15, fontweight='bold')
@@ -53,7 +59,7 @@ if len(cv_files) == num_cv_files:
     fig1.savefig(buf1, dpi=600, facecolor=bg_color)
     st.download_button("📥 Download CV Overlay", buf1.getvalue(), file_name="cv_overlay.png")
 
-# === 2. SCAN RATE STUDY ===
+# === Scan Rate Study ===
 st.header("2️⃣ Scan Rate Study")
 num_sr_files = st.number_input("Number of scan rate files:", 1, 10, 3)
 scanrate_files, scanrates, peak_currents = [], [], []
@@ -74,21 +80,14 @@ if len(scanrate_files) == num_sr_files:
     cmap2 = cm.get_cmap('plasma', num_sr_files)
 
     for i, (file, rate) in enumerate(zip(scanrate_files, scanrates)):
-        if file.name.endswith(".csv"):
-            first_line = file.read(1024).decode("utf-8")
-            file.seek(0)
-            delimiter = csv.Sniffer().sniff(first_line, delimiters=";,").delimiter
-            df = pd.read_csv(file, sep=delimiter)
-        else:
-            df = pd.read_excel(file)
-
+        df = read_cv_file(file)
         voltage = df.iloc[:, 0].values
         current = df.iloc[:, 1].values
         label = f"{rate:.0f} mV/s"
         ax2.plot(voltage, current, label=label, color=cmap2(i), linewidth=2)
 
         peak_current = np.max(np.abs(current))
-        peak_currents.append(peak_current * 1e6)  # Convert to µA
+        peak_currents.append(peak_current * 1e6)  # µA
 
     ax2.set_title("Scan Rate Curves", color=font_color, fontsize=15, fontweight='bold')
     ax2.set_xlabel("Voltage (V)", color=font_color, fontsize=13, fontweight='bold')
@@ -102,7 +101,7 @@ if len(scanrate_files) == num_sr_files:
     fig2.savefig(buf2, dpi=600, facecolor=bg_color)
     st.download_button("📥 Download Scan Rate Plot", buf2.getvalue(), file_name="scan_rate_plot.png")
 
-    # === 3. RANDLES–ŠEVCÍK PLOT ===
+    # === Randles-Sevcik Plot ===
     st.subheader("📊 3️⃣ Randles-Sevcik Plot: Ip vs √Scan Rate")
     scanrates_array = np.sqrt(np.array(scanrates))
     fig3, ax3 = plt.subplots(figsize=(7, 5))
