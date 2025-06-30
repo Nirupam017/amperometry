@@ -95,4 +95,4 @@ if uploaded_file:
 
 # === Footer ===
 st.markdown("---")
-st.markdown("Made with ❤️ for electrochemical research.")
+st.markdown("Made for electrochemical research.")
