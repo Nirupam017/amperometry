@@ -6,7 +6,6 @@ from io import BytesIO
 st.set_page_config(layout="wide")
 st.title("🔬 Cyclic Voltammetry (CV) Plotter")
 
-# Upload single or multiple CSV files
 uploaded_files = st.file_uploader("Upload CV CSV files", type="csv", accept_multiple_files=True)
 
 if uploaded_files:
@@ -14,21 +13,28 @@ if uploaded_files:
 
     for uploaded_file in uploaded_files:
         try:
-            # Read file without header, auto-convert to numeric
-            df = pd.read_csv(uploaded_file, header=None)
+            # Read with headers
+            df = pd.read_csv(uploaded_file)
+
+            # Ensure numeric conversion
             df = df.apply(pd.to_numeric, errors='coerce')
             df.dropna(inplace=True)
 
-            if df.shape[1] < 8:
-                st.warning(f"⚠️ File {uploaded_file.name} must have at least 8 columns.")
+            if 'Working Electrode (V)' not in df.columns or 'Current (A)' not in df.columns:
+                st.warning(f"⚠️ {uploaded_file.name} is missing required columns.")
                 continue
 
-            voltage = df.iloc[:, 5]  # Column 6
-            current = df.iloc[:, 7]  # Column 8
+            voltage = df['Working Electrode (V)']
+            current = df['Current (A)']
 
             ax.plot(voltage, current, label=uploaded_file.name, linewidth=2)
+
+            # Optional debug
+            st.write(f"Preview of {uploaded_file.name}")
+            st.dataframe(df[['Working Electrode (V)', 'Current (A)']].head(5))
+
         except Exception as e:
-            st.error(f"❌ Error with {uploaded_file.name}: {e}")
+            st.error(f"❌ Error processing {uploaded_file.name}: {e}")
 
     ax.set_title("CV Overlay Plot", fontsize=16, fontweight='bold')
     ax.set_xlabel("Voltage (V)", fontsize=14)
@@ -39,7 +45,6 @@ if uploaded_files:
     fig.patch.set_facecolor("white")
     st.pyplot(fig)
 
-    # Export button
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=600, bbox_inches='tight', facecolor="white")
     st.download_button(
