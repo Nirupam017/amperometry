@@ -25,7 +25,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Page Config ---
-st.set_page_config(layout="wide")
+
 st.title("🔬 Amperometry Analysis Tool")
 
 # --- Sidebar Inputs ---
