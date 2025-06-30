@@ -1,45 +1,45 @@
+import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import glob
-import os
 import numpy as np
 
-# === 1. Load all CSV files in the current folder ===
-cv_files = sorted(glob.glob("*.csv"))
-n_files = len(cv_files)
+# Streamlit config
+st.set_page_config(page_title="CV Plotter", layout="centered", page_icon="🔬")
+st.title("🔬 Cyclic Voltammetry Overlay Plot (Current in µA)")
 
-# === 2. Colormap setup ===
-cmap = plt.colormaps.get_cmap('plasma').resampled(n_files)
+# File uploader
+uploaded_files = st.file_uploader("Upload one or more CSV files", type="csv", accept_multiple_files=True)
 
-# === 3. Start plotting ===
-plt.style.use('dark_background')
-plt.figure(figsize=(10, 6))
+if uploaded_files:
+    plt.style.use('dark_background')
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-for i, file in enumerate(cv_files):
-    try:
-        # === Read the CSV and skip non-numeric headers if needed ===
-        df = pd.read_csv(file)
-        
-        # === Extract Voltage and Current ===
-        voltage = df["Working Electrode (V)"].astype(float).values
-        current = df["Current (A)"].astype(float).values * 1e6  # Convert A → µA
+    cmap = plt.colormaps.get_cmap('plasma').resampled(len(uploaded_files))
 
-        # === Create label from filename ===
-        legend_label = os.path.splitext(os.path.basename(file))[0].replace("_", " ")
+    for i, uploaded_file in enumerate(uploaded_files):
+        try:
+            df = pd.read_csv(uploaded_file)
 
-        # === Plot ===
-        plt.plot(voltage, current, label=legend_label, color=cmap(i), linewidth=2)
+            # Ensure expected columns exist
+            if "Working Electrode (V)" not in df.columns or "Current (A)" not in df.columns:
+                st.warning(f"⚠️ Skipping {uploaded_file.name}: required columns not found.")
+                continue
 
-    except Exception as e:
-        print(f"❌ Error in file {file}: {e}")
+            voltage = df["Working Electrode (V)"].astype(float).values
+            current_uA = df["Current (A)"].astype(float).values * 1e6  # Convert A → µA
 
-# === 4. Final plot formatting ===
-plt.xlabel("Voltage (V)", color='white')
-plt.ylabel("Current (µA)", color='white')
-plt.title("CV Overlay Plot (Current in µA)", color='white')
-plt.tick_params(colors='white')
-plt.legend(fontsize=8)
-plt.grid(False)
-plt.tight_layout()
-plt.savefig("CV_overlay_uA.png", dpi=600, facecolor='black')
-plt.show()
+            label = uploaded_file.name.replace("_", " ")
+            ax.plot(voltage, current_uA, label=label, color=cmap(i), linewidth=2)
+
+        except Exception as e:
+            st.error(f"❌ Error processing {uploaded_file.name}: {e}")
+
+    ax.set_xlabel("Voltage (V)", color='white')
+    ax.set_ylabel("Current (µA)", color='white')
+    ax.set_title("CV Overlay Plot (Current in µA)", color='white')
+    ax.tick_params(colors='white')
+    ax.legend(fontsize=8)
+    ax.grid(False)
+    fig.tight_layout()
+
+    st.pyplot(fig)
