@@ -19,12 +19,12 @@ if uploaded_files:
             df = df.apply(pd.to_numeric, errors='coerce')
             df.dropna(inplace=True)
 
-            if df.shape[1] < 2:
-                st.warning(f"⚠️ File {uploaded_file.name} does not have at least 2 columns.")
+            if df.shape[1] < 8:
+                st.warning(f"⚠️ File {uploaded_file.name} must have at least 8 columns.")
                 continue
 
-            voltage = df.iloc[:, 0]
-            current = df.iloc[:, 1]
+            voltage = df.iloc[:, 5]  # Column 6
+            current = df.iloc[:, 7]  # Column 8
 
             ax.plot(voltage, current, label=uploaded_file.name, linewidth=2)
         except Exception as e:
