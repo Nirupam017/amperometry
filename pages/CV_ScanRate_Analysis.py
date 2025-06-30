@@ -28,9 +28,9 @@ if uploaded_files:
             voltage = df.iloc[:, 5]
             current_uA = df.iloc[:, 7] * 1e6  # Convert A to µA
 
-            if voltage.empty or current_uA.empty:
-                st.warning(f"⚠️ No valid voltage/current data in {uploaded_file.name}")
-                continue
+            #if voltage.empty or current_uA.empty:
+              #  st.warning(f"⚠️ No valid voltage/current data in {uploaded_file.name}")
+              #  continue
 
             ax.plot(voltage, current_uA, label=uploaded_file.name, linewidth=2)
 
