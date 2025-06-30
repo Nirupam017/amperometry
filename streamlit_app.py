@@ -6,93 +6,98 @@ from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-# === Page Setup ===
-st.set_page_config(layout="wide", page_title="Electrochemistry Dashboard", page_icon="⚛️")
+st.set_page_config(layout="wide", page_title="Electrochem Analyzer", page_icon="🔬")
 
-# === THEME ===
+# --- Sidebar Settings ---
 with st.sidebar:
-    st.markdown("## 🔌 Appearance")
-    theme_mode = st.selectbox("Choose Theme", ["Smart Light", "Deep Dark"])
-    if theme_mode == "Smart Light":
-        bg_color = "white"
-        text_color = "black"
-    else:
-        bg_color = "#111"
-        text_color = "white"
-
+    st.markdown("## 🎨 Appearance")
+    theme_mode = st.radio("Theme", ["Light", "Dark"])
     trace_color = st.color_picker("Raw Trace Color", "#1E90FF")
     line_color = st.color_picker("Smoothed Line Color", "#FF595E")
-    label_fontsize = st.slider("Font Size", 10, 18, 13)
-
-    st.markdown("## 📥 Upload Data")
-    uploaded_file = st.file_uploader("Drop your CSV file here", type="csv")
-
+    st.markdown("---")
+    st.markdown("## 📥 Upload & Settings")
+    uploaded_file = st.file_uploader("Drop CSV here", type="csv")
     if uploaded_file:
-        file_label = st.text_input("Legend Label for Curve", value=uploaded_file.name.split(".")[0])
-        scan_rate = st.number_input("Scan Rate (mV/s) for this file", value=50)
+        file_label = st.text_input("Legend Label", value=uploaded_file.name.split(".")[0])
+        scan_rate = st.number_input("Scan Rate (mV/s)", value=50.0)
 
-# === Load and Process Data ===
+# --- Theme Setup ---
+if theme_mode == "Dark":
+    bg_color, text_color = "#111", "white"
+    plt.style.use("dark_background")
+else:
+    bg_color, text_color = "white", "black"
+    plt.style.use("default")
+
+# --- Header ---
+st.markdown(
+    f"<div style='text-align:center; padding:10px; background-color:{bg_color};'>"
+    f"<h1 style='color:#FF595E;'>🔬 ElectroChem Analyzer</h1>"
+    f"<h4 style='color:gray;'>Smart CV & Scan‑Rate Dashboard</h4>"
+    "</div>",
+    unsafe_allow_html=True
+)
+st.markdown("---")
+
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
-    required_columns = ["Elapsed Time (s)", "Current (A)", "Working Electrode (V)"]
-
-    if not all(col in df.columns for col in required_columns):
-        st.error("CSV missing required columns. Expecting: Elapsed Time (s), Current (A), Working Electrode (V)")
+    if "Working Electrode (V)" not in df or "Current (A)" not in df:
+        st.error("CSV missing required columns.")
     else:
-        df.dropna(inplace=True)
-        df['Current_nA'] = df["Current (A)"] * 1e9
+        df = df.dropna(subset=["Working Electrode (V)", "Current (A)"])
+        df["Current_µA"] = df["Current (A)"] * 1e6
 
-        # === PLOT CV OVERLAY ===
-        with st.expander("🔍 CV Overlay Plot"):
-            fig, ax = plt.subplots(figsize=(7, 5))
-            ax.plot(df["Working Electrode (V)"], df['Current_nA'], label=file_label, color=trace_color, linewidth=1.5)
-            ax.set_xlabel("Voltage (V)", fontsize=label_fontsize)
-            ax.set_ylabel("Current (nA)", fontsize=label_fontsize)
-            ax.set_title("Cyclic Voltammetry", fontsize=label_fontsize + 2, color=text_color)
-            ax.grid(True)
-            ax.legend()
-            fig.patch.set_facecolor(bg_color)
-            ax.set_facecolor(bg_color)
-            ax.tick_params(colors=text_color)
-            for spine in ax.spines.values():
+        # --- CV Overlay Plot ---
+        st.subheader("📈 CV Overlay")
+        fig, ax = plt.subplots(figsize=(7,5), facecolor=bg_color)
+        ax.plot(df["Working Electrode (V)"], df["Current_µA"],
+                color=trace_color, label=file_label, linewidth=1.8)
+        ax.set_facecolor(bg_color)
+        ax.set_xlabel("Voltage (V)", color=text_color)
+        ax.set_ylabel("Current (µA)", color=text_color)
+        ax.tick_params(colors=text_color)
+        for spine in ax.spines.values():
+            spine.set_edgecolor(text_color)
+        ax.legend(facecolor=bg_color, edgecolor=text_color)
+        st.pyplot(fig)
+
+        # --- Scan Rate Analysis ---
+        st.subheader("📉 Scan Rate Study")
+        pos_peak = df.iloc[df["Current_µA"].idxmax()]
+        neg_peak = df.iloc[df["Current_µA"].idxmin()]
+        ipa = float(pos_peak["Current_µA"])
+        ipc = float(neg_peak["Current_µA"])
+        st.markdown(f"- **Anodic Peak (Ipa):** {ipa:.2f} µA at {pos_peak['Working Electrode (V)']:.3f} V")
+        st.markdown(f"- **Cathodic Peak (Ipc):** {ipc:.2f} µA at {neg_peak['Working Electrode (V)']:.3f} V")
+
+        # Track scan rate data across runs
+        if "scan_records" not in st.session_state:
+            st.session_state.scan_records = []
+        if st.button("🟢 Add to Scan Rate Study"):
+            st.session_state.scan_records.append({"scan": scan_rate, "ipa": ipa, "ipc": ipc})
+
+        records = st.session_state.scan_records
+        if records:
+            df2 = pd.DataFrame(records)
+            model = LinearRegression().fit(df2[["scan"]], df2["ipa"])
+            ipa_pred = model.predict(df2[["scan"]])
+            r2 = r2_score(df2["ipa"], ipa_pred)
+
+            fig2, ax2 = plt.subplots(figsize=(7,5), facecolor=bg_color)
+            ax2.scatter(df2["scan"], df2["ipa"], label="Ipa", color="crimson", s=60)
+            ax2.plot(df2["scan"], ipa_pred, color="crimson", linestyle="--")
+            ax2.set_facecolor(bg_color)
+            ax2.set_xlabel("Scan Rate (mV/s)", color=text_color)
+            ax2.set_ylabel("Ipa (µA)", color=text_color)
+            ax2.tick_params(colors=text_color)
+            for spine in ax2.spines.values():
                 spine.set_edgecolor(text_color)
-            st.pyplot(fig)
+            ax2.text(0.05,0.95,f"R²={r2:.3f}", transform=ax2.transAxes,
+                     bbox=dict(facecolor=bg_color, edgecolor=text_color),
+                     color=text_color)
+            st.pyplot(fig2)
+            st.download_button("📄 Download Scan Rate Data", df2.to_csv(index=False), file_name="scan_rate_data.csv")
 
-        # === SCAN RATE STUDY ===
-        with st.expander("📊 Scan Rate Study (Peak Analysis)"):
-            pos_peak = df.loc[df['Current_nA'].idxmax()]
-            neg_peak = df.loc[df['Current_nA'].idxmin()]
-            st.markdown(f"**Positive Peak Current:** {pos_peak['Current_nA']:.2f} nA at {pos_peak['Working Electrode (V)']:.2f} V")
-            st.markdown(f"**Negative Peak Current:** {neg_peak['Current_nA']:.2f} nA at {neg_peak['Working Electrode (V)']:.2f} V")
-
-            if 'scan_data' not in st.session_state:
-                st.session_state.scan_data = []
-
-            if st.button("Add to Scan Rate Plot"):
-                st.session_state.scan_data.append({
-                    'Scan Rate (mV/s)': scan_rate,
-                    'Ipa (nA)': pos_peak['Current_nA'],
-                    'Ipc (nA)': neg_peak['Current_nA']
-                })
-
-            if st.session_state.scan_data:
-                scan_df = pd.DataFrame(st.session_state.scan_data)
-                fig2, ax2 = plt.subplots(figsize=(6, 4))
-                ax2.scatter(scan_df['Scan Rate (mV/s)'], scan_df['Ipa (nA)'], color='crimson', label='Ipa')
-                ax2.scatter(scan_df['Scan Rate (mV/s)'], scan_df['Ipc (nA)'], color='navy', label='Ipc')
-                ax2.set_xlabel("Scan Rate (mV/s)", fontsize=label_fontsize)
-                ax2.set_ylabel("Peak Current (nA)", fontsize=label_fontsize)
-                ax2.set_title("Scan Rate vs Peak Currents", fontsize=label_fontsize + 1, color=text_color)
-                ax2.legend()
-                fig2.patch.set_facecolor(bg_color)
-                ax2.set_facecolor(bg_color)
-                ax2.tick_params(colors=text_color)
-                for spine in ax2.spines.values():
-                    spine.set_edgecolor(text_color)
-                st.pyplot(fig2)
-
-                st.download_button("📉 Download Scan Rate Data", scan_df.to_csv(index=False), file_name="scanrate_study.csv")
-
-# === Footer ===
 st.markdown("---")
-st.markdown("Made for electrochemical research.")
+st.markdown("<div style='text-align:center;'>Made for electrochemist minds.</div>", unsafe_allow_html=True)
+
