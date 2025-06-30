@@ -9,24 +9,13 @@ from sklearn.metrics import r2_score
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
-# === Sidebar ===
-theme = st.sidebar.radio("Theme Mode", ["Light", "Dark"], index=0)
-palette = st.sidebar.selectbox("Raw Trace Color", ["Gray", "SteelBlue", "LightBlue", "SkyBlue", "DodgerBlue"])
+# === Sidebar Customization ===
+bg_choice = st.sidebar.selectbox("Background Color", ["White", "Black"])
+bg_color = "white" if bg_choice == "White" else "black"
+text_color = "black" if bg_color == "white" else "white"
 
-# Color mapping
-palette_dict = {
-    "Gray": "#999999",
-    "SteelBlue": "steelblue",
-    "LightBlue": "#ADD8E6",
-    "SkyBlue": "#87CEEB",
-    "DodgerBlue": "#1E90FF"
-}
-
-# Theming
-bg_color = "black" if theme == "Dark" else "white"
-text_color = "white" if theme == "Dark" else "black"
-raw_color = palette_dict[palette]
-smooth_color = "#FF595E" if theme == "Dark" else "#D62828"
+trace_color = st.sidebar.color_picker("Pick Raw Trace Color", "#1E90FF")
+line_color = st.sidebar.color_picker("Pick Smoothed Line Color", "#FF595E")
 
 # === User Inputs ===
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
@@ -59,7 +48,7 @@ if uploaded_file:
     time = plot_df[TIME_COL].values
     current_nA = plot_df[CURRENT_COL].values * 1e9
 
-    # Remove artifacts/spikes in raw trace
+    # remove abnormal jumps
     diffs = np.abs(np.diff(current_nA, prepend=current_nA[0]))
     current_nA[diffs > 5] = np.nan
 
@@ -99,8 +88,8 @@ if uploaded_file:
 
         # Plot A
         if overlay_raw:
-            ax1.plot(time, current_nA, color=raw_color, linewidth=0.5, alpha=0.7)
-        ax1.plot(time, smoothed, color=smooth_color, linewidth=1.5)
+            ax1.plot(time, current_nA, color=trace_color, linewidth=0.5, alpha=0.7)
+        ax1.plot(time, smoothed, color=line_color, linewidth=1.5)
 
         for t, conc in zip(spike_times, concentrations):
             yval = np.interp(t, time, smoothed)
@@ -118,14 +107,14 @@ if uploaded_file:
             spine.set_color(text_color)
 
         # Plot B
-        ax2.scatter(valid_concs, y, color=smooth_color, edgecolors='black', s=60)
-        ax2.plot(valid_concs, y_pred, color='white' if theme == "Dark" else 'black', linewidth=2)
+        ax2.scatter(valid_concs, y, color=line_color, edgecolors='black', s=60)
+        ax2.plot(valid_concs, y_pred, color=text_color, linewidth=2)
 
-        box_text = '\\n'.join([
-            rf"$R^2$ = {r2:.4f}",
-            rf"LOD = {LOD:.2f} µM",
-            rf"Sensitivity = {slope:.2f} nA/µM",
-            rf"y = {slope:.2f}x + {intercept:.2f}"
+        box_text = '\n'.join([
+            f"R² = {r2:.4f}",
+            f"LOD = {LOD:.2f} µM",
+            f"Sensitivity = {slope:.2f} nA/µM",
+            f"y = {slope:.2f}x + {intercept:.2f}"
         ])
         props = dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='black', linewidth=1.5)
         ax2.text(0.05, 0.95, box_text, transform=ax2.transAxes,
@@ -152,8 +141,8 @@ if uploaded_file:
 
             fig2, ax_inset = plt.subplots(figsize=(6, 3))
             if overlay_raw:
-                ax_inset.plot(inset_time, inset_current, color=raw_color, linewidth=0.5, alpha=0.7)
-            ax_inset.plot(inset_time, inset_smooth, color=smooth_color, linewidth=1.5)
+                ax_inset.plot(inset_time, inset_current, color=trace_color, linewidth=0.5, alpha=0.7)
+            ax_inset.plot(inset_time, inset_smooth, color=line_color, linewidth=1.5)
             ax_inset.set_xlabel("Time (s)", fontsize=13, fontweight='bold')
             ax_inset.set_ylabel("Current (nA)", fontsize=13, fontweight='bold')
             ax_inset.set_title(f"Inset: {inset_start}-{inset_end} s", fontsize=14, fontweight='bold')
@@ -179,6 +168,7 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
 
 
