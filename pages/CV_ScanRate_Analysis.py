@@ -13,25 +13,24 @@ if uploaded_files:
 
     for uploaded_file in uploaded_files:
         try:
-            # Read with headers
-            df = pd.read_csv(uploaded_file)
-
-            # Ensure numeric conversion
+            # Skip first row (header), no column names needed
+            df = pd.read_csv(uploaded_file, header=1)
             df = df.apply(pd.to_numeric, errors='coerce')
             df.dropna(inplace=True)
 
-            if 'Working Electrode (V)' not in df.columns or 'Current (A)' not in df.columns:
-                st.warning(f"⚠️ {uploaded_file.name} is missing required columns.")
-                continue
+            # Extract voltage from column index 6 and current from column index 8
+            voltage = df.iloc[:, 6]
+            current = df.iloc[:, 8]
 
-            voltage = df['Working Electrode (V)']
-            current = df['Current (A)']
+            if voltage.empty or current.empty:
+                st.warning(f"⚠️ No valid voltage/current data in {uploaded_file.name}")
+                continue
 
             ax.plot(voltage, current, label=uploaded_file.name, linewidth=2)
 
-            # Optional debug
-            st.write(f"Preview of {uploaded_file.name}")
-            st.dataframe(df[['Working Electrode (V)', 'Current (A)']].head(5))
+            # Debug preview
+            st.write(f"🔍 Preview of {uploaded_file.name}")
+            st.dataframe(df.iloc[:, [6, 8]].rename(columns={6: "Voltage (V)", 8: "Current (A)"}).head())
 
         except Exception as e:
             st.error(f"❌ Error processing {uploaded_file.name}: {e}")
@@ -45,6 +44,7 @@ if uploaded_files:
     fig.patch.set_facecolor("white")
     st.pyplot(fig)
 
+    # Download button
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=600, bbox_inches='tight', facecolor="white")
     st.download_button(
