@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 
 # --- Custom CSS for light/dark theme toggle ---
 st.markdown("""
