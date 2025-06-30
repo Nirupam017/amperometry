@@ -22,7 +22,7 @@ st.markdown("""
 
     .footer {
         position: fixed;
-        bottom: 20px;
+        bottom: 58px;  /* moved 1 cm up */
         right: 30px;
         font-size: 16px;
         font-weight: bold;
