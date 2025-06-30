@@ -9,6 +9,7 @@ from sklearn.metrics import r2_score
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
+# --- Sidebar Inputs ---
 st.sidebar.header("Upload and Parameters")
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 
@@ -18,6 +19,7 @@ end_time = st.sidebar.number_input("End Time (s)", value=499)
 
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 custom_yaxis = st.sidebar.checkbox("Set Y-axis manually", value=False)
+custom_xaxis = st.sidebar.checkbox("Set X-axis manually", value=False)
 
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
@@ -28,6 +30,11 @@ if custom_yaxis:
     yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=0.0)
     yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100.0)
 
+if custom_xaxis:
+    xaxis_min = st.sidebar.number_input("X-axis Min (s)", value=start_time)
+    xaxis_max = st.sidebar.number_input("X-axis Max (s)", value=end_time)
+
+# --- Process Data ---
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     TIME_COL = "Elapsed Time (s)"
@@ -53,7 +60,7 @@ if uploaded_file:
         if not window.empty:
             avg = window.mean()
             spike_currents.append(avg * 1e9)
-            valid_concs.append(concentrations[i])
+            valid_concs.append(int(concentrations[i]))
             valid_spike_times.append(t)
 
     if len(spike_currents) >= 2:
@@ -71,19 +78,23 @@ if uploaded_file:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
+        # Amperometry Plot (A)
         if overlay_raw:
-            ax1.plot(time, current_nA, color='lightgray', linewidth=0.8)
+            ax1.plot(time, current_nA, color='#A0A0A0', linewidth=0.8, label='Raw')
+        ax1.plot(time, smoothed, color='#E63946', linewidth=1.5, label='Smoothed')
 
-        ax1.plot(time, smoothed, color='red', linewidth=1.5)
         for t, conc in zip(spike_times, concentrations):
             yval = np.interp(t, time, smoothed)
-            ax1.annotate(f"{conc:.0f} µM", xy=(t, yval), xytext=(t, yval + 5),
-                         arrowprops=dict(arrowstyle='->'), ha='center', fontsize=9)
+            ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 5),
+                         arrowprops=dict(arrowstyle='->'), ha='center', fontsize=9, fontweight='bold')
 
-        ax1.set_xlabel("t /s", fontsize=14)
-        ax1.set_ylabel("Current /nA", fontsize=14)
+        ax1.set_xlabel("Time (s)", fontsize=14, fontweight='bold')
+        ax1.set_ylabel("Current (nA)", fontsize=14, fontweight='bold')
         ax1.set_title("A", loc='left', fontsize=16, fontweight='bold')
         ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
+        ax1.tick_params(axis='both', labelsize=12, width=1.5)
+        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold')
+        ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold')
 
         if custom_yaxis:
             ax1.set_ylim(yaxis_min, yaxis_max)
@@ -93,29 +104,42 @@ if uploaded_file:
             margin = (y_max - y_min) * 0.1
             ax1.set_ylim(y_min - margin, y_max + margin)
 
+        if custom_xaxis:
+            ax1.set_xlim(xaxis_min, xaxis_max)
+        else:
+            ax1.set_xlim(start_time, end_time)
+
         for spine in ax1.spines.values():
-            spine.set_linewidth(1.2)
+            spine.set_linewidth(1.5)
 
-        ax2.scatter(valid_concs, y, color='red')
-        ax2.plot(valid_concs, y_pred, color='black')
+        # Calibration Plot (B)
+        ax2.scatter(valid_concs, y, color='#E63946', edgecolors='black', s=60)
+        ax2.plot(valid_concs, y_pred, color='black', linewidth=2)
 
-        # Split lines for better readability
-        ax2.text(0.05, 0.85, f'y = {slope:.3f}x + {intercept:.3f}', transform=ax2.transAxes, fontsize=10)
-        ax2.text(0.05, 0.75, f'$R^2$ = {r2:.4f}', transform=ax2.transAxes, fontsize=10)
-        ax2.text(0.05, 0.65, f'LOD = {LOD:.2f} µM', transform=ax2.transAxes, fontsize=10)
-        ax2.text(0.05, 0.55, f'Sensitivity = {slope:.2f} nA/µM', transform=ax2.transAxes, fontsize=10)
+        box_text = '\n'.join([
+            rf"$R^2$ = {r2:.4f}",
+            rf"LOD = {LOD:.2f} µM",
+            rf"Sensitivity = {slope:.2f} nA/µM",
+            rf"y = {slope:.2f}x + {intercept:.2f}"
+        ])
+        props = dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='black', linewidth=1.5)
+        ax2.text(0.05, 0.95, box_text, transform=ax2.transAxes,
+                 fontsize=11, verticalalignment='top', bbox=props, fontweight='bold')
 
-        ax2.set_xlabel("Concentration /µM", fontsize=14)
-        ax2.set_ylabel("Current /nA", fontsize=14)
+        ax2.set_xlabel("Concentration (µM)", fontsize=14, fontweight='bold')
+        ax2.set_ylabel("Current (nA)", fontsize=14, fontweight='bold')
         ax2.set_title("B", loc='left', fontsize=16, fontweight='bold')
         ax2.set_xticks(valid_concs)
-
+        ax2.tick_params(axis='both', labelsize=12, width=1.5)
+        ax2.set_xticklabels(ax2.get_xticks(), fontweight='bold')
+        ax2.set_yticklabels(ax2.get_yticks(), fontweight='bold')
         for spine in ax2.spines.values():
-            spine.set_linewidth(1.2)
+            spine.set_linewidth(1.5)
 
         plt.tight_layout()
         st.pyplot(fig)
 
+        # Downloads
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
         st.download_button("📷 Download Figure", buf.getvalue(), file_name=f"{label}_figure.png", mime="image/png")
@@ -134,3 +158,4 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
