@@ -2,7 +2,6 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
-# Use custom CSS for background and text
 st.markdown("""
     <style>
     .stApp {
@@ -26,12 +25,16 @@ st.markdown("""
         bottom: 20px;
         right: 30px;
         font-size: 16px;
-        color: #ffffffcc;
         font-weight: bold;
-        text-shadow: 1px 1px 3px black;
+        background-color: rgba(0,0,0,0.6);
+        padding: 6px 12px;
+        border-radius: 8px;
+        color: #00ffff;
+        box-shadow: 0 0 10px #000;
+        z-index: 9999;
     }
     </style>
 
     <div class="overlay-text">Powered by the legacy of Nikola Tesla</div>
-    <div class="footer">Created by NIRUPAM</div>
+    <div class="footer">Created by <span style="color:#00ffff;">NIRUPAM</span></div>
 """, unsafe_allow_html=True)
