@@ -34,6 +34,11 @@ st.header("1️⃣ CV Overlay")
 num_cv_files = st.number_input("Number of CV files:", 1, 20, 3)
 cv_files = st.file_uploader("Upload CV files (CSV/XLSX):", type=['csv', 'xlsx'], accept_multiple_files=True, key='cv')
 
+# Ask user for Voltage (X-axis) range
+st.subheader("Set Voltage Range for Plotting (X-axis)")
+v_min = st.number_input("Start Voltage (V):", value=-1.0)
+v_max = st.number_input("End Voltage (V):", value=1.0)
+
 if len(cv_files) == num_cv_files:
     fig1, ax1 = plt.subplots(figsize=(10, 6))
     cmap1 = cm.get_cmap('viridis', num_cv_files)
@@ -43,6 +48,12 @@ if len(cv_files) == num_cv_files:
         if df is not None:
             voltage = df.iloc[:, 0].values
             current = df.iloc[:, 1].values
+
+            # Filter data within user-defined voltage range
+            mask = (voltage >= v_min) & (voltage <= v_max)
+            voltage = voltage[mask]
+            current = current[mask]
+
             label = file.name.split('.')[0].replace('_', ' ')
             ax1.plot(voltage, current, label=label, color=cmap1(i), linewidth=2)
 
