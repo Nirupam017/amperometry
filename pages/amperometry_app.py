@@ -5,6 +5,57 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+# ---- Place this block at the top of every Streamlit page (e.g., Amperometry_Analysis.py, ScanRate_Analysis.py) ----
+import streamlit as st
+
+st.set_page_config(layout="wide")
+
+# General background styling (Tesla wallpaper or themed image)
+st.markdown("""
+    <style>
+    .stApp {
+        background-image: url("https://wallpapercave.com/wp/wp1821381.jpg");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        color: white;
+    }
+    
+    /* Optional: Adjust blockquote and subtitle styling */
+    blockquote {
+        font-size: 18px;
+        font-weight: bold;
+        color: #00ffff;
+        border-left: 4px solid #00ffff;
+        padding-left: 10px;
+    }
+    
+    /* Footer fix - move it up */
+    footer {
+        position: fixed;
+        bottom: 10px;
+        right: 20px;
+        font-size: 14px;
+        color: #00ffff;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Optional subtitle or Tesla quote
+st.markdown("""
+<blockquote>"If you want to find the secrets of the universe, think in terms of energy, frequency and vibration." — Nikola Tesla</blockquote>
+""", unsafe_allow_html=True)
+
+# Footer signature
+st.markdown("""
+<footer>Created by <strong>NIRUPAM</strong></footer>
+""", unsafe_allow_html=True)
+
+# ---- Your existing analysis code or layout follows below ----
+
+# For example:
+st.header("🔬 Amperometry Analysis Tool")
+# ... continue with file upload and graphing logic ...
 
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
