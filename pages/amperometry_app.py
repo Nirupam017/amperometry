@@ -9,8 +9,16 @@ from sklearn.metrics import r2_score
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
-# --- Sidebar Inputs ---
-st.sidebar.header("Upload and Parameters")
+# Theme toggle
+theme = st.sidebar.radio("Theme Mode", ["Light", "Dark"], index=0)
+
+# Set colors based on theme
+bg_color = "black" if theme == "Dark" else "white"
+text_color = "white" if theme == "Dark" else "black"
+raw_color = "#B0B0B0" if theme == "Dark" else "gray"
+smooth_color = "#FF595E"  # red tone that works on both themes
+
+# Sidebar Inputs
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 
 label = st.sidebar.text_input("Label", value="sensor1")
@@ -34,7 +42,7 @@ if custom_xaxis:
     xaxis_min = st.sidebar.number_input("X-axis Min (s)", value=start_time)
     xaxis_max = st.sidebar.number_input("X-axis Max (s)", value=end_time)
 
-# --- Process Data ---
+# Data Processing
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     TIME_COL = "Elapsed Time (s)"
@@ -76,25 +84,26 @@ if uploaded_file:
         baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9
         LOD = (3 * baseline_std) / slope
 
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor=bg_color)
 
-        # Amperometry Plot (A)
+        # --- Panel A: Amperometry ---
         if overlay_raw:
-            ax1.plot(time, current_nA, color='#A0A0A0', linewidth=0.8, label='Raw')
-        ax1.plot(time, smoothed, color='#E63946', linewidth=1.5, label='Smoothed')
+            ax1.plot(time, current_nA, color=raw_color, linewidth=0.8)
+        ax1.plot(time, smoothed, color=smooth_color, linewidth=1.5)
 
         for t, conc in zip(spike_times, concentrations):
             yval = np.interp(t, time, smoothed)
-            ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 5),
-                         arrowprops=dict(arrowstyle='->'), ha='center', fontsize=9, fontweight='bold')
+            ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
+                         arrowprops=dict(arrowstyle='->', color=text_color),
+                         ha='center', fontsize=9, fontweight='bold', color=text_color)
 
-        ax1.set_xlabel("Time (s)", fontsize=14, fontweight='bold')
-        ax1.set_ylabel("Current (nA)", fontsize=14, fontweight='bold')
-        ax1.set_title("A", loc='left', fontsize=16, fontweight='bold')
+        ax1.set_xlabel("Time (s)", fontsize=14, fontweight='bold', color=text_color)
+        ax1.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
+        ax1.set_title("A", loc='left', fontsize=16, fontweight='bold', color=text_color)
         ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
-        ax1.tick_params(axis='both', labelsize=12, width=1.5)
-        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold')
-        ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold')
+        ax1.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color)
+        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold', color=text_color)
+        ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', color=text_color)
 
         if custom_yaxis:
             ax1.set_ylim(yaxis_min, yaxis_max)
@@ -111,10 +120,11 @@ if uploaded_file:
 
         for spine in ax1.spines.values():
             spine.set_linewidth(1.5)
+            spine.set_color(text_color)
 
-        # Calibration Plot (B)
-        ax2.scatter(valid_concs, y, color='#E63946', edgecolors='black', s=60)
-        ax2.plot(valid_concs, y_pred, color='black', linewidth=2)
+        # --- Panel B: Calibration ---
+        ax2.scatter(valid_concs, y, color=smooth_color, edgecolors='black', s=60)
+        ax2.plot(valid_concs, y_pred, color='white' if theme == "Dark" else 'black', linewidth=2)
 
         box_text = '\n'.join([
             rf"$R^2$ = {r2:.4f}",
@@ -124,17 +134,18 @@ if uploaded_file:
         ])
         props = dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='black', linewidth=1.5)
         ax2.text(0.05, 0.95, box_text, transform=ax2.transAxes,
-                 fontsize=11, verticalalignment='top', bbox=props, fontweight='bold')
+                 fontsize=11, verticalalignment='top', bbox=props, fontweight='bold', color='black')
 
-        ax2.set_xlabel("Concentration (µM)", fontsize=14, fontweight='bold')
-        ax2.set_ylabel("Current (nA)", fontsize=14, fontweight='bold')
-        ax2.set_title("B", loc='left', fontsize=16, fontweight='bold')
+        ax2.set_xlabel("Concentration (µM)", fontsize=14, fontweight='bold', color=text_color)
+        ax2.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
+        ax2.set_title("B", loc='left', fontsize=16, fontweight='bold', color=text_color)
         ax2.set_xticks(valid_concs)
-        ax2.tick_params(axis='both', labelsize=12, width=1.5)
-        ax2.set_xticklabels(ax2.get_xticks(), fontweight='bold')
-        ax2.set_yticklabels(ax2.get_yticks(), fontweight='bold')
+        ax2.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color)
+        ax2.set_xticklabels(ax2.get_xticks(), fontweight='bold', color=text_color)
+        ax2.set_yticklabels(ax2.get_yticks(), fontweight='bold', color=text_color)
         for spine in ax2.spines.values():
             spine.set_linewidth(1.5)
+            spine.set_color(text_color)
 
         plt.tight_layout()
         st.pyplot(fig)
@@ -158,4 +169,5 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
