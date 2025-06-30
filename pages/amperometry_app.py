@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
@@ -9,26 +10,21 @@ from sklearn.metrics import r2_score
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
-# Theme toggle
+# === Theme Selection ===
 theme = st.sidebar.radio("Theme Mode", ["Light", "Dark"], index=0)
-
-# Set colors based on theme
 bg_color = "black" if theme == "Dark" else "white"
 text_color = "white" if theme == "Dark" else "black"
 raw_color = "#B0B0B0" if theme == "Dark" else "gray"
-smooth_color = "#FF595E"  # red tone that works on both themes
+smooth_color = "#FF595E"
 
-# Sidebar Inputs
+# === Sidebar Inputs ===
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
-
 label = st.sidebar.text_input("Label", value="sensor1")
 start_time = st.sidebar.number_input("Start Time (s)", value=280)
 end_time = st.sidebar.number_input("End Time (s)", value=499)
-
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 custom_yaxis = st.sidebar.checkbox("Set Y-axis manually", value=False)
 custom_xaxis = st.sidebar.checkbox("Set X-axis manually", value=False)
-
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
 spike_count = st.sidebar.number_input("Spike Count", value=10)
@@ -37,12 +33,11 @@ conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
 if custom_yaxis:
     yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=0.0)
     yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100.0)
-
 if custom_xaxis:
     xaxis_min = st.sidebar.number_input("X-axis Min (s)", value=start_time)
     xaxis_max = st.sidebar.number_input("X-axis Max (s)", value=end_time)
 
-# Data Processing
+# === Main Plotting ===
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     TIME_COL = "Elapsed Time (s)"
@@ -58,10 +53,7 @@ if uploaded_file:
     spike_times = np.arange(spike_start, spike_start + spike_interval * spike_count, spike_interval)
     concentrations = np.arange(conc_per_spike, conc_per_spike * spike_count + 1, conc_per_spike)
 
-    spike_currents = []
-    valid_concs = []
-    valid_spike_times = []
-
+    spike_currents, valid_concs, valid_spike_times = [], [], []
     for i, t in enumerate(spike_times):
         mask = (plot_df[TIME_COL] >= t - SPIKE_WINDOW) & (plot_df[TIME_COL] <= t + SPIKE_WINDOW)
         window = plot_df.loc[mask, CURRENT_COL]
@@ -76,17 +68,18 @@ if uploaded_file:
         y = np.array(spike_currents)
         model = LinearRegression().fit(X, y)
         y_pred = model.predict(X)
-        slope = model.coef_[0]
-        intercept = model.intercept_
+        slope, intercept = model.coef_[0], model.intercept_
         r2 = r2_score(y, y_pred)
 
         baseline = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] < spike_start - 5)]
         baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9
         LOD = (3 * baseline_std) / slope
 
+        # === Plotting ===
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor=bg_color)
+        ax1.set_facecolor(bg_color)
+        ax2.set_facecolor(bg_color)
 
-        # --- Panel A: Amperometry ---
         if overlay_raw:
             ax1.plot(time, current_nA, color=raw_color, linewidth=0.8)
         ax1.plot(time, smoothed, color=smooth_color, linewidth=1.5)
@@ -100,18 +93,16 @@ if uploaded_file:
         ax1.set_xlabel("Time (s)", fontsize=14, fontweight='bold', color=text_color)
         ax1.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
         ax1.set_title("A", loc='left', fontsize=16, fontweight='bold', color=text_color)
-        ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
         ax1.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color)
-        ax1.set_xticklabels(ax1.get_xticks(), fontweight='bold', color=text_color)
-        ax1.set_yticklabels(ax1.get_yticks(), fontweight='bold', color=text_color)
+        ax1.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax1.yaxis.set_major_locator(MaxNLocator(integer=True))
 
         if custom_yaxis:
             ax1.set_ylim(yaxis_min, yaxis_max)
         else:
             y_min = np.nanmin(smoothed)
             y_max = np.nanmax(smoothed)
-            margin = (y_max - y_min) * 0.1
-            ax1.set_ylim(y_min - margin, y_max + margin)
+            ax1.set_ylim(y_min - 0.1*(y_max - y_min), y_max + 0.1*(y_max - y_min))
 
         if custom_xaxis:
             ax1.set_xlim(xaxis_min, xaxis_max)
@@ -122,7 +113,7 @@ if uploaded_file:
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
 
-        # --- Panel B: Calibration ---
+        # --- Calibration Plot ---
         ax2.scatter(valid_concs, y, color=smooth_color, edgecolors='black', s=60)
         ax2.plot(valid_concs, y_pred, color='white' if theme == "Dark" else 'black', linewidth=2)
 
@@ -139,10 +130,9 @@ if uploaded_file:
         ax2.set_xlabel("Concentration (µM)", fontsize=14, fontweight='bold', color=text_color)
         ax2.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
         ax2.set_title("B", loc='left', fontsize=16, fontweight='bold', color=text_color)
-        ax2.set_xticks(valid_concs)
         ax2.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color)
-        ax2.set_xticklabels(ax2.get_xticks(), fontweight='bold', color=text_color)
-        ax2.set_yticklabels(ax2.get_yticks(), fontweight='bold', color=text_color)
+        ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
+        ax2.yaxis.set_major_locator(MaxNLocator(integer=True))
         for spine in ax2.spines.values():
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
@@ -150,7 +140,7 @@ if uploaded_file:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # Downloads
+        # === Downloads ===
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
         st.download_button("📷 Download Figure", buf.getvalue(), file_name=f"{label}_figure.png", mime="image/png")
@@ -169,5 +159,6 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
 
