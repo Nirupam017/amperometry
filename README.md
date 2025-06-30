@@ -1,6 +1,6 @@
 #  Amperometry Analysis Tool
 
-An interactive and publication-ready tool for analysing amperometric biosensor data. Built using **Python**, **Streamlit**, and **scikit-learn**, it extracts spike currents, plots real-time traces, generates calibration curves, and calculates sensitivity and LOD.
+An interactive tool for analysing amperometric biosensor data. Built using **Python**, **Streamlit**, and **scikit-learn**, it extracts spike currents, plots real-time traces, generates calibration curves, and calculates sensitivity and LOD.
 
 ##  Try It Online
 
