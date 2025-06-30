@@ -55,6 +55,7 @@ elif mode == "Scan Rate Study":
 
     if uploaded_files:
         records = []
+        peak_table = []
         for i, file in enumerate(uploaded_files):
             with st.expander(f"Details for {file.name}"):
                 scan_rate = st.number_input(f"Scan Rate (V/s) for {file.name}", key=f"rate_{i}", min_value=0.0, step=0.01)
@@ -62,34 +63,39 @@ elif mode == "Scan Rate Study":
             df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
             voltage = df["Working Electrode (V)"].values
             current = df["Current (A)"].values * 1e6
-            peak_current = current[np.argmax(np.abs(current))]  # Max abs peak
-            records.append((scan_rate, peak_current))
+            anodic_peak = np.max(current)
+            cathodic_peak = np.min(current)
+            peak_table.append({"Scan Rate (V/s)": scan_rate, "Anodic Peak (µA)": anodic_peak, "Cathodic Peak (µA)": cathodic_peak})
+            records.append((scan_rate, anodic_peak, cathodic_peak))
 
-        # Sort and convert
-        records = sorted(records)
+        peak_df = pd.DataFrame(peak_table).sort_values("Scan Rate (V/s)")
+        st.subheader("📊 Peak Currents Table")
+        st.dataframe(peak_df, use_container_width=True)
+
         scan_rates = np.array([r[0] for r in records]).reshape(-1, 1)
-        peak_currents = np.array([r[1] for r in records])
+        anodic_peaks = np.array([r[1] for r in records])
+        cathodic_peaks = np.array([r[2] for r in records])
 
-        model = LinearRegression().fit(scan_rates, peak_currents)
-        y_pred = model.predict(scan_rates)
-        r2 = r2_score(peak_currents, y_pred)
+        model_anodic = LinearRegression().fit(scan_rates, anodic_peaks)
+        model_cathodic = LinearRegression().fit(scan_rates, cathodic_peaks)
 
-        # Plot scan rate study
+        pred_anodic = model_anodic.predict(scan_rates)
+        pred_cathodic = model_cathodic.predict(scan_rates)
+
         fig, ax = plt.subplots(figsize=(8, 6), facecolor=bg_color)
         ax.set_facecolor(bg_color)
-        ax.scatter(scan_rates, peak_currents, color="dodgerblue", edgecolor="black", s=80, label="Data Points")
-        ax.plot(scan_rates, y_pred, color="red", linewidth=2, label=f"Fit: y = {model.coef_[0]:.2f}x + {model.intercept_:.2f}")
+        ax.scatter(scan_rates, anodic_peaks, color="red", s=80, label="Anodic Peaks")
+        ax.plot(scan_rates, pred_anodic, color="red", linestyle="--", label=f"Anodic Fit: y={model_anodic.coef_[0]:.2f}x+{model_anodic.intercept_:.2f}")
 
-        ax.text(0.05, 0.95, f"R² = {r2:.4f}", transform=ax.transAxes,
-                fontsize=12, verticalalignment='top',
-                bbox=dict(facecolor=bg_color, edgecolor=text_color, boxstyle='round'),
-                color=text_color)
+        ax.scatter(scan_rates, cathodic_peaks, color="blue", s=80, label="Cathodic Peaks")
+        ax.plot(scan_rates, pred_cathodic, color="blue", linestyle="--", label=f"Cathodic Fit: y={model_cathodic.coef_[0]:.2f}x+{model_cathodic.intercept_:.2f}")
 
         ax.set_xlabel("Scan Rate (V/s)", fontsize=14, color=text_color)
         ax.set_ylabel("Peak Current (µA)", fontsize=14, color=text_color)
-        ax.set_title("Scan Rate vs. Peak Current", fontsize=16, fontweight="bold", color=text_color)
+        ax.set_title("Scan Rate vs. Peak Currents", fontsize=16, fontweight="bold", color=text_color)
         ax.tick_params(colors=text_color)
         for spine in ax.spines.values():
             spine.set_color(text_color)
         ax.legend(facecolor=bg_color, edgecolor=text_color, labelcolor=text_color)
+
         st.pyplot(fig)
