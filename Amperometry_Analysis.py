@@ -7,9 +7,37 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 from scipy.signal import find_peaks
 
+# --- Page config ---
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
+# --- Tesla background image only ---
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-image: url("https://upload.wikimedia.org/wikipedia/commons/d/d4/N.Tesla.JPG");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        background-attachment: fixed;
+    }
+    .stApp::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.4);  /* subtle white overlay for readability */
+        z-index: -1;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Sidebar controls ---
 st.sidebar.header("Upload and Parameters")
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 
@@ -19,7 +47,6 @@ end_time = st.sidebar.number_input("End Time (s)", value=499)
 auto_detect = st.sidebar.checkbox("Auto-detect spikes", value=False)
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 
-# Default for manual spike setup
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
 spike_count = st.sidebar.number_input("Spike Count", value=10)
@@ -28,6 +55,7 @@ conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
 yaxis_min = st.sidebar.number_input("Y-axis Min (nA)", value=-20)
 yaxis_max = st.sidebar.number_input("Y-axis Max (nA)", value=100)
 
+# --- Analysis logic ---
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     TIME_COL = "Elapsed Time (s)"
@@ -40,7 +68,6 @@ if uploaded_file:
     current_nA = plot_df[CURRENT_COL].values * 1e9
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
-    # Auto spike detection
     if auto_detect:
         peaks, _ = find_peaks(smoothed, distance=spike_interval * 5, height=np.nanmean(smoothed) + 5)
         spike_times = time[peaks][:spike_count]
@@ -75,7 +102,7 @@ if uploaded_file:
         baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9
         LOD = (3 * baseline_std) / slope
 
-        # --- PLOTS ---
+        # --- Plots ---
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
         if overlay_raw:
@@ -113,7 +140,7 @@ if uploaded_file:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # --- Download buttons ---
+        # --- Download options ---
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
         st.download_button("📷 Download Figure", buf.getvalue(), file_name=f"{label}_figure.png", mime="image/png")
