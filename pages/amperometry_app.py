@@ -8,10 +8,6 @@ from sklearn.metrics import r2_score
 
 # ---- Your existing analysis code or layout follows below ----
 
-# For example:
-st.header("🔬 Amperometry Analysis Tool")
-# ... continue with file upload and graphing logic ...
-
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
