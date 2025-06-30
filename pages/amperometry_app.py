@@ -84,6 +84,9 @@ if uploaded_file:
         LOD = (3 * baseline_std) / slope
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor=bg_color)
+        ax1.set_facecolor(bg_color)
+        ax2.set_facecolor(bg_color)
+
         plt.rcParams['font.family'] = 'Arial'
 
         # Plot A
@@ -140,6 +143,8 @@ if uploaded_file:
             inset_smooth = pd.Series(inset_current).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
             fig2, ax_inset = plt.subplots(figsize=(6, 3), facecolor=bg_color)
+            ax_inset.set_facecolor(bg_color)
+
             if overlay_raw:
                 ax_inset.plot(inset_time, inset_current, color=trace_color, linewidth=0.5, alpha=0.7)
             ax_inset.plot(inset_time, inset_smooth, color=line_color, linewidth=1.5)
