@@ -13,14 +13,17 @@ if uploaded_files:
 
     for uploaded_file in uploaded_files:
         try:
-            # Skip first row (header), no column names needed
-            df = pd.read_csv(uploaded_file, header=1)
+            df = pd.read_csv(uploaded_file, header=None)
             df = df.apply(pd.to_numeric, errors='coerce')
             df.dropna(inplace=True)
 
-            # Extract voltage from column index 6 and current from column index 8
-            voltage = df.iloc[:, 6]
-            current = df.iloc[:, 8]
+            # Select correct columns (6 = index 5, 8 = index 7)
+            if df.shape[1] <= 7:
+                st.warning(f"⚠️ File {uploaded_file.name} does not contain at least 8 columns.")
+                continue
+
+            voltage = df.iloc[:, 5]
+            current = df.iloc[:, 7]
 
             if voltage.empty or current.empty:
                 st.warning(f"⚠️ No valid voltage/current data in {uploaded_file.name}")
@@ -28,12 +31,8 @@ if uploaded_files:
 
             ax.plot(voltage, current, label=uploaded_file.name, linewidth=2)
 
-            # Debug preview
-            st.write(f"🔍 Preview of {uploaded_file.name}")
-            st.dataframe(df.iloc[:, [6, 8]].rename(columns={6: "Voltage (V)", 8: "Current (A)"}).head())
-
         except Exception as e:
-            st.error(f"❌ Error processing {uploaded_file.name}: {e}")
+            st.error(f"❌ Error with {uploaded_file.name}: {e}")
 
     ax.set_title("CV Overlay Plot", fontsize=16, fontweight='bold')
     ax.set_xlabel("Voltage (V)", fontsize=14)
@@ -44,7 +43,7 @@ if uploaded_files:
     fig.patch.set_facecolor("white")
     st.pyplot(fig)
 
-    # Download button
+    # Export button
     buf = BytesIO()
     fig.savefig(buf, format="png", dpi=600, bbox_inches='tight', facecolor="white")
     st.download_button(
