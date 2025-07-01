@@ -1,117 +1,71 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-from scipy.signal import find_peaks
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
+import plotly.graph_objects as go
 
 st.set_page_config(layout="wide")
 st.title("🔬 CV Analysis Tool")
-
-mode = st.sidebar.radio("Select Mode", ["Overlay CV Curves", "Scan Rate Study"])
 
 bg_choice = st.sidebar.selectbox("Background Color", ["White", "Black"])
 bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
 
-# ========== OVERLAY MODE ==========
-if mode == "Overlay CV Curves":
-    st.header("📈 CV Curve Overlay")
-    uploaded_files = st.file_uploader("Upload CV CSV Files", type="csv", accept_multiple_files=True)
+st.header("📈 CV Curve Overlay with Manual Peak Marking")
+uploaded_files = st.file_uploader("Upload CV CSV Files", type="csv", accept_multiple_files=True)
 
-    if uploaded_files:
-        fig, ax = plt.subplots(figsize=(8, 6), facecolor=bg_color)
-        ax.set_facecolor(bg_color)
+# Session state for peak storage
+if "peaks" not in st.session_state:
+    st.session_state.peaks = []
 
-        for i, file in enumerate(uploaded_files):
-            with st.expander(f"Customize {file.name}"):
-                label = st.text_input(f"Legend Label for {file.name}", value=file.name, key=f"label_{i}")
-                color = st.color_picker(f"Color for {file.name}", key=f"color_{i}")
+if uploaded_files:
+    fig = go.Figure()
 
-            df = pd.read_csv(file)
-            df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
-            voltage = df["Working Electrode (V)"].values
-            current = df["Current (A)"].values * 1e6
+    for i, file in enumerate(uploaded_files):
+        with st.expander(f"Customize {file.name}"):
+            label = st.text_input(f"Legend Label for {file.name}", value=file.name, key=f"label_{i}")
+            color = st.color_picker(f"Color for {file.name}", key=f"color_{i}")
 
-            ax.plot(voltage, current, label=label, color=color, linewidth=2)
+        df = pd.read_csv(file)
+        df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
+        voltage = df["Working Electrode (V)"].values
+        current = df["Current (A)"].values * 1e6
 
-        ax.set_xlabel("Voltage (V)", fontsize=14, color=text_color)
-        ax.set_ylabel("Current (µA)", fontsize=14, color=text_color)
-        ax.set_title("CV Curve Overlay", fontsize=16, fontweight="bold", color=text_color)
-        ax.tick_params(colors=text_color)
-        for spine in ax.spines.values():
-            spine.set_color(text_color)
-        ax.legend(facecolor=bg_color, edgecolor=text_color, labelcolor=text_color)
-        st.pyplot(fig)
+        fig.add_trace(go.Scatter(x=voltage, y=current, mode="lines", name=label, line=dict(color=color)))
 
-# ========== SCAN RATE MODE ==========
-elif mode == "Scan Rate Study":
-    st.header("📉 Scan Rate Study with Peak Detection")
-    uploaded_files = st.file_uploader("Upload CV Files with Different Scan Rates", type="csv", accept_multiple_files=True)
+    fig.update_layout(
+        title="CV Curve Overlay (Click to mark peaks)",
+        xaxis_title="Voltage (V)",
+        yaxis_title="Current (µA)",
+        plot_bgcolor=bg_color,
+        paper_bgcolor=bg_color,
+        font=dict(color=text_color),
+        dragmode="pan"
+    )
 
-    if uploaded_files:
-        records_anodic = []
-        records_cathodic = []
+    # Show plot
+    selected_point = st.plotly_chart(fig, use_container_width=True)
 
-        for i, file in enumerate(uploaded_files):
-            with st.expander(f"Details for {file.name}"):
-                scan_rate = st.number_input(f"Scan Rate (V/s) for {file.name}", key=f"rate_{i}", min_value=0.0, step=0.01)
+    # Manual Peak Marking
+    st.markdown("### 🧪 Mark Peaks")
+    peak_type = st.radio("Peak Type", ["Anodic", "Cathodic"])
+    peak_voltage = st.number_input("Voltage of Peak (V)", format="%.4f")
+    peak_current = st.number_input("Current of Peak (µA)", format="%.2f")
+    if st.button("➕ Add Peak"):
+        st.session_state.peaks.append({
+            "Type": peak_type,
+            "Voltage (V)": peak_voltage,
+            "Current (µA)": peak_current
+        })
 
-            df = pd.read_csv(file)
-            df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
-            voltage = df["Working Electrode (V)"].values
-            current = df["Current (A)"].values * 1e6
+    # Show marked peaks
+    if st.session_state.peaks:
+        st.markdown("### 📍 Marked Peaks")
+        st.dataframe(pd.DataFrame(st.session_state.peaks))
 
-            # Detect anodic peak (positive current)
-            anodic_peaks, _ = find_peaks(current, prominence=0.5)
-            cathodic_peaks, _ = find_peaks(-current, prominence=0.5)
+        # Optionally allow download
+        csv = pd.DataFrame(st.session_state.peaks).to_csv(index=False).encode('utf-8')
+        st.download_button("📄 Download Peaks CSV", csv, "marked_peaks.csv", "text/csv")
 
-            anodic_peak_current = np.nan
-            cathodic_peak_current = np.nan
-
-            if len(anodic_peaks) > 0:
-                idx = anodic_peaks[np.argmax(current[anodic_peaks])]
-                anodic_peak_current = current[idx]
-            if len(cathodic_peaks) > 0:
-                idx = cathodic_peaks[np.argmax(-current[cathodic_peaks])]
-                cathodic_peak_current = current[idx]
-
-            if not np.isnan(anodic_peak_current):
-                records_anodic.append((scan_rate, anodic_peak_current))
-            if not np.isnan(cathodic_peak_current):
-                records_cathodic.append((scan_rate, cathodic_peak_current))
-
-        def plot_peak_vs_scan_rate(records, peak_type):
-            if not records:
-                st.warning(f"No {peak_type} peaks detected.")
-                return
-
-            records = sorted(records)
-            scan_rates = np.array([r[0] for r in records]).reshape(-1, 1)
-            peak_currents = np.array([r[1] for r in records])
-
-            model = LinearRegression().fit(scan_rates, peak_currents)
-            y_pred = model.predict(scan_rates)
-            r2 = r2_score(peak_currents, y_pred)
-
-            fig, ax = plt.subplots(figsize=(8, 6), facecolor=bg_color)
-            ax.set_facecolor(bg_color)
-            ax.scatter(scan_rates, peak_currents, color="dodgerblue", edgecolor="black", s=80, label="Data Points")
-            ax.plot(scan_rates, y_pred, color="red", linewidth=2,
-                    label=f"Fit: y = {model.coef_[0]:.2f}x + {model.intercept_:.2f}")
-            ax.text(0.05, 0.95, f"R² = {r2:.4f}", transform=ax.transAxes,
-                    fontsize=12, verticalalignment='top',
-                    bbox=dict(facecolor=bg_color, edgecolor=text_color, boxstyle='round'),
-                    color=text_color)
-            ax.set_xlabel("Scan Rate (V/s)", fontsize=14, color=text_color)
-            ax.set_ylabel(f"{peak_type} Peak Current (µA)", fontsize=14, color=text_color)
-            ax.set_title(f"{peak_type} Peak Current vs. Scan Rate", fontsize=16, fontweight="bold", color=text_color)
-            ax.tick_params(colors=text_color)
-            for spine in ax.spines.values():
-                spine.set_color(text_color)
-            ax.legend(facecolor=bg_color, edgecolor=text_color, labelcolor=text_color)
-            st.pyplot(fig)
-
-        plot_peak_vs_scan_rate(records_anodic, "Anodic")
-        plot_peak_vs_scan_rate(records_cathodic, "Cathodic")
+    # Option to reset
+    if st.button("❌ Clear All Peaks"):
+        st.session_state.peaks = []
