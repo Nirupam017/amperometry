@@ -6,8 +6,6 @@ from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-# ---- Your existing analysis code or layout follows below ----
-
 st.set_page_config(layout="wide")
 st.title("🔬 Amperometry Analysis Tool")
 
@@ -18,6 +16,13 @@ text_color = "black" if bg_color == "white" else "white"
 
 trace_color = st.sidebar.color_picker("Pick Raw Trace Color", "#1E90FF")
 line_color = st.sidebar.color_picker("Pick Smoothed Line Color", "#FF595E")
+
+# === Font Customization ===
+st.sidebar.markdown("### 🎨 Font Customization")
+font_size = st.sidebar.slider("Font Size", min_value=8, max_value=20, value=14)
+font_style_choice = st.sidebar.selectbox("Font Style", ["Normal", "Bold", "Italic"])
+fontweight_map = {"Normal": "normal", "Bold": "bold", "Italic": "normal"}
+fontstyle_map = {"Normal": "normal", "Bold": "normal", "Italic": "italic"}
 
 # === User Inputs ===
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
@@ -49,10 +54,6 @@ if uploaded_file:
     plot_df = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] <= end_time)].copy()
     time = plot_df[TIME_COL].values
     current_nA = plot_df[CURRENT_COL].values * 1e9
-
-    # remove abnormal jumps
-    diffs = np.abs(np.diff(current_nA, prepend=current_nA[0]))
-    current_nA[diffs > 5] = np.nan
 
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
@@ -100,13 +101,22 @@ if uploaded_file:
             yval = np.interp(t, time, smoothed)
             ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
                          arrowprops=dict(arrowstyle='->', color=text_color),
-                         ha='center', fontsize=9, fontweight='bold', color=text_color)
+                         ha='center', fontsize=font_size,
+                         fontweight=fontweight_map[font_style_choice],
+                         fontstyle=fontstyle_map[font_style_choice],
+                         color=text_color)
 
-        ax1.set_xlabel("Time (s)", fontsize=14, fontweight='bold', color=text_color)
-        ax1.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
-        ax1.set_title("A", loc='left', fontsize=16, fontweight='bold', color=text_color)
+        ax1.set_xlabel("Time (s)", fontsize=font_size,
+                       fontweight=fontweight_map[font_style_choice],
+                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
+        ax1.set_ylabel("Current (nA)", fontsize=font_size,
+                       fontweight=fontweight_map[font_style_choice],
+                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
+        ax1.set_title("A", loc='left', fontsize=font_size + 2,
+                      fontweight=fontweight_map[font_style_choice],
+                      fontstyle=fontstyle_map[font_style_choice], color=text_color)
         ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
-        ax1.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color, labelcolor=text_color)
+        ax1.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
         for spine in ax1.spines.values():
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
@@ -123,13 +133,21 @@ if uploaded_file:
         ])
         props = dict(boxstyle='round,pad=0.5', facecolor=bg_color, edgecolor=text_color, linewidth=1.5)
         ax2.text(0.05, 0.95, box_text, transform=ax2.transAxes,
-                 fontsize=11, verticalalignment='top', bbox=props, fontweight='bold', color=text_color)
+                 fontsize=font_size - 2, verticalalignment='top',
+                 bbox=props, fontweight=fontweight_map[font_style_choice],
+                 fontstyle=fontstyle_map[font_style_choice], color=text_color)
 
-        ax2.set_xlabel("Concentration (µM)", fontsize=14, fontweight='bold', color=text_color)
-        ax2.set_ylabel("Current (nA)", fontsize=14, fontweight='bold', color=text_color)
-        ax2.set_title("B", loc='left', fontsize=16, fontweight='bold', color=text_color)
+        ax2.set_xlabel("Concentration (µM)", fontsize=font_size,
+                       fontweight=fontweight_map[font_style_choice],
+                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
+        ax2.set_ylabel("Current (nA)", fontsize=font_size,
+                       fontweight=fontweight_map[font_style_choice],
+                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
+        ax2.set_title("B", loc='left', fontsize=font_size + 2,
+                      fontweight=fontweight_map[font_style_choice],
+                      fontstyle=fontstyle_map[font_style_choice], color=text_color)
         ax2.set_xticks(valid_concs)
-        ax2.tick_params(axis='both', labelsize=12, width=1.5, colors=text_color, labelcolor=text_color)
+        ax2.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
         for spine in ax2.spines.values():
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
@@ -150,10 +168,16 @@ if uploaded_file:
             if overlay_raw:
                 ax_inset.plot(inset_time, inset_current, color=trace_color, linewidth=0.5, alpha=0.7)
             ax_inset.plot(inset_time, inset_smooth, color=line_color, linewidth=1.5)
-            ax_inset.set_xlabel("Time (s)", fontsize=13, fontweight='bold', color=text_color)
-            ax_inset.set_ylabel("Current (nA)", fontsize=13, fontweight='bold', color=text_color)
-            ax_inset.set_title(f"Inset: {inset_start}-{inset_end} s", fontsize=14, fontweight='bold', color=text_color)
-            ax_inset.tick_params(axis='both', labelsize=11, width=1.5, colors=text_color, labelcolor=text_color)
+            ax_inset.set_xlabel("Time (s)", fontsize=font_size,
+                                fontweight=fontweight_map[font_style_choice],
+                                fontstyle=fontstyle_map[font_style_choice], color=text_color)
+            ax_inset.set_ylabel("Current (nA)", fontsize=font_size,
+                                fontweight=fontweight_map[font_style_choice],
+                                fontstyle=fontstyle_map[font_style_choice], color=text_color)
+            ax_inset.set_title(f"Inset: {inset_start}-{inset_end} s", fontsize=font_size + 1,
+                               fontweight=fontweight_map[font_style_choice],
+                               fontstyle=fontstyle_map[font_style_choice], color=text_color)
+            ax_inset.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
             for spine in ax_inset.spines.values():
                 spine.set_linewidth(1.5)
                 spine.set_color(text_color)
@@ -178,6 +202,7 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
 
 
