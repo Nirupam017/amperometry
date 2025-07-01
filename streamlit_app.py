@@ -5,7 +5,7 @@ st.set_page_config(layout="wide")
 st.markdown("""
     <style>
     .stApp {
-        background-image: url("https://wallpapercave.com/w/wp1936436");
+        background-image: url("https://wallpapercave.com/w/wp1936436.jpg");
         background-size: cover;
         background-position: center;
         color: white;
