@@ -35,6 +35,6 @@ st.markdown("""
     }
     </style>
 
-    <div class="overlay-text">Inspired by the legacy of Nikola Tesla</div>
+
     <div class="footer">Created by <span style="color:#00ffff;">NIRUPAM</span></div>
 """, unsafe_allow_html=True)
