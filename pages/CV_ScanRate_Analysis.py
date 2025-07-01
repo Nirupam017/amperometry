@@ -1,24 +1,28 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
 st.title("🔬 CV Analysis Tool")
 
+# === Background and Theme ===
 bg_choice = st.sidebar.selectbox("Background Color", ["White", "Black"])
 bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
 
-st.header("📈 CV Curve Overlay with Manual Peak Marking")
+# === Font Customization ===
+st.sidebar.markdown("### 🎨 Font Customization")
+font_size = st.sidebar.slider("Font Size", min_value=8, max_value=20, value=14)
+font_weight = st.sidebar.selectbox("Font Weight", ["normal", "bold"])
+
+# === File Upload ===
+st.header("📈 CV Curve Overlay")
 uploaded_files = st.file_uploader("Upload CV CSV Files", type="csv", accept_multiple_files=True)
 
-# Session state for peak storage
-if "peaks" not in st.session_state:
-    st.session_state.peaks = []
-
 if uploaded_files:
-    fig = go.Figure()
+    fig, ax = plt.subplots(figsize=(8, 6), facecolor=bg_color)
+    ax.set_facecolor(bg_color)
 
     for i, file in enumerate(uploaded_files):
         with st.expander(f"Customize {file.name}"):
@@ -28,44 +32,18 @@ if uploaded_files:
         df = pd.read_csv(file)
         df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
         voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e6
+        current = df["Current (A)"].values * 1e6  # Convert A to µA
 
-        fig.add_trace(go.Scatter(x=voltage, y=current, mode="lines", name=label, line=dict(color=color)))
+        ax.plot(voltage, current, label=label, color=color, linewidth=2)
 
-    fig.update_layout(
-        title="CV Curve Overlay (Click to mark peaks)",
-        xaxis_title="Voltage (V)",
-        yaxis_title="Current (µA)",
-        plot_bgcolor=bg_color,
-        paper_bgcolor=bg_color,
-        font=dict(color=text_color),
-        dragmode="pan"
-    )
+    # === Styling ===
+    ax.set_xlabel("Voltage (V)", fontsize=font_size, fontweight=font_weight, color=text_color)
+    ax.set_ylabel("Current (µA)", fontsize=font_size, fontweight=font_weight, color=text_color)
+    ax.set_title("CV Curve Overlay", fontsize=font_size + 2, fontweight=font_weight, color=text_color)
 
-    # Show plot
-    selected_point = st.plotly_chart(fig, use_container_width=True)
+    ax.tick_params(colors=text_color, labelsize=font_size)
+    for spine in ax.spines.values():
+        spine.set_color(text_color)
 
-    # Manual Peak Marking
-    st.markdown("### 🧪 Mark Peaks")
-    peak_type = st.radio("Peak Type", ["Anodic", "Cathodic"])
-    peak_voltage = st.number_input("Voltage of Peak (V)", format="%.4f")
-    peak_current = st.number_input("Current of Peak (µA)", format="%.2f")
-    if st.button("➕ Add Peak"):
-        st.session_state.peaks.append({
-            "Type": peak_type,
-            "Voltage (V)": peak_voltage,
-            "Current (µA)": peak_current
-        })
-
-    # Show marked peaks
-    if st.session_state.peaks:
-        st.markdown("### 📍 Marked Peaks")
-        st.dataframe(pd.DataFrame(st.session_state.peaks))
-
-        # Optionally allow download
-        csv = pd.DataFrame(st.session_state.peaks).to_csv(index=False).encode('utf-8')
-        st.download_button("📄 Download Peaks CSV", csv, "marked_peaks.csv", "text/csv")
-
-    # Option to reset
-    if st.button("❌ Clear All Peaks"):
-        st.session_state.peaks = []
+    ax.legend(facecolor=bg_color, edgecolor=text_color, labelcolor=text_color)
+    st.pyplot(fig)
