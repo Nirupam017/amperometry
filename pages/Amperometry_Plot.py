@@ -31,6 +31,7 @@ label = st.sidebar.text_input("Label", value="sensor1")
 start_time = st.sidebar.number_input("Start Time (s)", value=280)
 end_time = st.sidebar.number_input("End Time (s)", value=499)
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
+show_spike_arrows = st.sidebar.checkbox("Show Spike Concentration Labels", value=True)
 
 spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
 spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
@@ -97,14 +98,15 @@ if uploaded_file:
             ax1.plot(time, current_nA, color=trace_color, linewidth=0.5, alpha=0.7)
         ax1.plot(time, smoothed, color=line_color, linewidth=1.5)
 
-        for t, conc in zip(spike_times, concentrations):
-            yval = np.interp(t, time, smoothed)
-            ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
-                         arrowprops=dict(arrowstyle='->', color=text_color),
-                         ha='center', fontsize=font_size,
-                         fontweight=fontweight_map[font_style_choice],
-                         fontstyle=fontstyle_map[font_style_choice],
-                         color=text_color)
+        if show_spike_arrows:
+            for t, conc in zip(spike_times, concentrations):
+                yval = np.interp(t, time, smoothed)
+                ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
+                             arrowprops=dict(arrowstyle='->', color=text_color),
+                             ha='center', fontsize=font_size,
+                             fontweight=fontweight_map[font_style_choice],
+                             fontstyle=fontstyle_map[font_style_choice],
+                             color=text_color)
 
         ax1.set_xlabel("Time (s)", fontsize=font_size,
                        fontweight=fontweight_map[font_style_choice],
@@ -202,6 +204,7 @@ if uploaded_file:
         st.markdown(f"- **R²**: `{r2:.4f}`")
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
+
 
 
 
