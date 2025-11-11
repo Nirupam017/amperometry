@@ -54,12 +54,11 @@ if uploaded_file:
     plot_df = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] <= end_time)].copy()
     time = plot_df[TIME_COL].values
     current_nA = plot_df[CURRENT_COL].values * 1e9
-
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
-    # === Modified Spike Staircase Logic ===
-    first_spike_time = spike_start + 30     # 30 sec after initial spike
-    last_spike_time = end_time - 30         # 30 sec before end of recording
+    # === Spike timing based on user-defined interval ===
+    first_spike_time = spike_start + 30    # 30 sec after given start spike
+    last_spike_time = end_time - 30        # 30 sec before end of recording
 
     spike_times = np.arange(first_spike_time, last_spike_time + 1, spike_interval)
     spike_count = len(spike_times)
@@ -76,6 +75,7 @@ if uploaded_file:
             valid_spike_times.append(t)
 
     if len(spike_currents) >= 2:
+        # === Linear Regression for Sensitivity ===
         X = np.array(valid_concs).reshape(-1, 1)
         y = np.array(spike_currents)
         model = LinearRegression().fit(X, y)
@@ -85,15 +85,16 @@ if uploaded_file:
         r2 = r2_score(y, y_pred)
 
         baseline = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] < spike_start - 5)]
-        baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9
-        LOD = (3 * baseline_std) / slope
+        baseline_std = np.std(baseline[CURRENT_COL].values) * 1e9 if not baseline.empty else 0
+        LOD = (3 * baseline_std) / slope if slope != 0 else np.nan
 
+        # === Plotting ===
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor=bg_color)
         ax1.set_facecolor(bg_color)
         ax2.set_facecolor(bg_color)
         plt.rcParams['font.family'] = 'Arial'
 
-        # === Plot A (Trace) ===
+        # --- Plot A (Trace) ---
         if overlay_raw:
             ax1.plot(time, current_nA, color=trace_color, linewidth=0.5, alpha=0.7)
         ax1.plot(time, smoothed, color=line_color, linewidth=1.5)
@@ -124,7 +125,7 @@ if uploaded_file:
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
 
-        # === Plot B (Sensitivity) ===
+        # --- Plot B (Sensitivity) ---
         ax2.scatter(valid_concs, y, color=line_color, edgecolors='black', s=60)
         ax2.plot(valid_concs, y_pred, color=text_color, linewidth=2)
 
@@ -160,7 +161,7 @@ if uploaded_file:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # === Optional Inset Plot ===
+        # --- Optional Inset Plot ---
         if inset_enabled:
             inset_df = df[(df[TIME_COL] >= inset_start) & (df[TIME_COL] <= inset_end)].copy()
             inset_time = inset_df[TIME_COL].values
@@ -189,7 +190,7 @@ if uploaded_file:
                 spine.set_color(text_color)
             st.pyplot(fig2)
 
-        # === Downloads ===
+        # --- Downloads ---
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
         st.download_button("📷 Download Figure", buf.getvalue(),
