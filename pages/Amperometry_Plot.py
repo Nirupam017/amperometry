@@ -28,14 +28,13 @@ fontstyle_map = {"Normal": "normal", "Bold": "normal", "Italic": "italic"}
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 label = st.sidebar.text_input("Label", value="sensor1")
 
-start_time = st.sidebar.number_input("Start Time (s)", value=280)
-end_time = st.sidebar.number_input("End Time (s)", value=499)
+start_time = st.sidebar.number_input("Start Time (s)", value=200)
+end_time = st.sidebar.number_input("End Time (s)", value=600)
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 show_spike_arrows = st.sidebar.checkbox("Show Spike Concentration Labels", value=True)
 
-spike_start = st.sidebar.number_input("Spike Start (s)", value=300)
-spike_interval = st.sidebar.number_input("Spike Interval (s)", value=20)
-spike_count = st.sidebar.number_input("Spike Count", value=10)
+spike_start = st.sidebar.number_input("Spike Start (s)", value=200)
+spike_interval = st.sidebar.number_input("Spike Interval (s)", value=30)
 conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
 
 # Optional inset
@@ -58,13 +57,15 @@ if uploaded_file:
 
     smoothed = pd.Series(current_nA).rolling(window=ROLLING_WINDOW, center=True).mean().values
 
-    spike_times = np.arange(spike_start, spike_start + spike_interval * spike_count, spike_interval)
-    concentrations = np.arange(conc_per_spike, conc_per_spike * spike_count + 1, conc_per_spike)
+    # === Modified Spike Staircase Logic ===
+    first_spike_time = spike_start + 30     # 30 sec after initial spike
+    last_spike_time = end_time - 30         # 30 sec before end of recording
 
-    spike_currents = []
-    valid_concs = []
-    valid_spike_times = []
+    spike_times = np.arange(first_spike_time, last_spike_time + 1, spike_interval)
+    spike_count = len(spike_times)
+    concentrations = np.arange(conc_per_spike, conc_per_spike * (spike_count + 1), conc_per_spike)
 
+    spike_currents, valid_concs, valid_spike_times = [], [], []
     for i, t in enumerate(spike_times):
         mask = (plot_df[TIME_COL] >= t - SPIKE_WINDOW) & (plot_df[TIME_COL] <= t + SPIKE_WINDOW)
         window = plot_df.loc[mask, CURRENT_COL]
@@ -90,16 +91,15 @@ if uploaded_file:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5), facecolor=bg_color)
         ax1.set_facecolor(bg_color)
         ax2.set_facecolor(bg_color)
-
         plt.rcParams['font.family'] = 'Arial'
 
-        # Plot A
+        # === Plot A (Trace) ===
         if overlay_raw:
             ax1.plot(time, current_nA, color=trace_color, linewidth=0.5, alpha=0.7)
         ax1.plot(time, smoothed, color=line_color, linewidth=1.5)
 
         if show_spike_arrows:
-            for t, conc in zip(spike_times, concentrations):
+            for t, conc in zip(valid_spike_times, valid_concs):
                 yval = np.interp(t, time, smoothed)
                 ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
                              arrowprops=dict(arrowstyle='->', color=text_color),
@@ -117,13 +117,14 @@ if uploaded_file:
         ax1.set_title("A", loc='left', fontsize=font_size + 2,
                       fontweight=fontweight_map[font_style_choice],
                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
-        ax1.set_xticks(np.arange(start_time, end_time + 1, spike_interval))
-        ax1.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
+        ax1.set_xticks(spike_times)
+        ax1.tick_params(axis='both', labelsize=font_size, width=1.5,
+                        colors=text_color, labelcolor=text_color)
         for spine in ax1.spines.values():
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
 
-        # Plot B
+        # === Plot B (Sensitivity) ===
         ax2.scatter(valid_concs, y, color=line_color, edgecolors='black', s=60)
         ax2.plot(valid_concs, y_pred, color=text_color, linewidth=2)
 
@@ -133,7 +134,8 @@ if uploaded_file:
             f"Sensitivity = {slope:.2f} nA/µM",
             f"y = {slope:.2f}x + {intercept:.2f}"
         ])
-        props = dict(boxstyle='round,pad=0.5', facecolor=bg_color, edgecolor=text_color, linewidth=1.5)
+        props = dict(boxstyle='round,pad=0.5', facecolor=bg_color,
+                     edgecolor=text_color, linewidth=1.5)
         ax2.text(0.05, 0.95, box_text, transform=ax2.transAxes,
                  fontsize=font_size - 2, verticalalignment='top',
                  bbox=props, fontweight=fontweight_map[font_style_choice],
@@ -149,7 +151,8 @@ if uploaded_file:
                       fontweight=fontweight_map[font_style_choice],
                       fontstyle=fontstyle_map[font_style_choice], color=text_color)
         ax2.set_xticks(valid_concs)
-        ax2.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
+        ax2.tick_params(axis='both', labelsize=font_size, width=1.5,
+                        colors=text_color, labelcolor=text_color)
         for spine in ax2.spines.values():
             spine.set_linewidth(1.5)
             spine.set_color(text_color)
@@ -157,7 +160,7 @@ if uploaded_file:
         plt.tight_layout()
         st.pyplot(fig)
 
-        # Inset Plot
+        # === Optional Inset Plot ===
         if inset_enabled:
             inset_df = df[(df[TIME_COL] >= inset_start) & (df[TIME_COL] <= inset_end)].copy()
             inset_time = inset_df[TIME_COL].values
@@ -179,16 +182,18 @@ if uploaded_file:
             ax_inset.set_title(f"Inset: {inset_start}-{inset_end} s", fontsize=font_size + 1,
                                fontweight=fontweight_map[font_style_choice],
                                fontstyle=fontstyle_map[font_style_choice], color=text_color)
-            ax_inset.tick_params(axis='both', labelsize=font_size, width=1.5, colors=text_color, labelcolor=text_color)
+            ax_inset.tick_params(axis='both', labelsize=font_size, width=1.5,
+                                 colors=text_color, labelcolor=text_color)
             for spine in ax_inset.spines.values():
                 spine.set_linewidth(1.5)
                 spine.set_color(text_color)
             st.pyplot(fig2)
 
-        # Downloads
+        # === Downloads ===
         buf = BytesIO()
         fig.savefig(buf, format="png", dpi=300)
-        st.download_button("📷 Download Figure", buf.getvalue(), file_name=f"{label}_figure.png", mime="image/png")
+        st.download_button("📷 Download Figure", buf.getvalue(),
+                           file_name=f"{label}_figure.png", mime="image/png")
 
         result_df = pd.DataFrame({
             "Spike Time (s)": valid_spike_times,
@@ -196,17 +201,14 @@ if uploaded_file:
             "Avg Current (nA)": y,
             "Predicted Current (nA)": y_pred
         })
-        st.download_button("📄 Download CSV Result Table", result_df.to_csv(index=False), file_name=f"{label}_results.csv")
+        st.download_button("📄 Download CSV Result Table",
+                           result_df.to_csv(index=False),
+                           file_name=f"{label}_results.csv")
 
         st.success(f"✅ Done! Label: **{label}**")
         st.markdown(f"- **Sensitivity**: `{slope:.2f} nA/µM`")
         st.markdown(f"- **LOD**: `{LOD:.2f} µM`")
         st.markdown(f"- **R²**: `{r2:.4f}`")
+
     else:
         st.warning("⚠️ Not enough valid spikes detected.")
-
-
-
-
-
-
