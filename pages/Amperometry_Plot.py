@@ -101,12 +101,17 @@ if uploaded_file:
         if show_spike_arrows:
             for t, conc in zip(spike_times, concentrations):
                 yval = np.interp(t, time, smoothed)
-                ax1.annotate(f"{int(conc)} µM", xy=(t, yval), xytext=(t, yval + 3),
-                             arrowprops=dict(arrowstyle='->', color=text_color),
-                             ha='center', fontsize=font_size,
-                             fontweight=fontweight_map[font_style_choice],
-                             fontstyle=fontstyle_map[font_style_choice],
-                             color=text_color)
+                y_offset = 0.06 * (np.nanmax(smoothed) - np.nanmin(smoothed))  # 6% of signal range
+                ax1.annotate(f"{int(conc)} µM",
+                xy=(t, yval),
+                xytext=(t, yval + y_offset),
+                arrowprops=dict(arrowstyle='->', color=text_color, linewidth=1),
+                ha='center', va='bottom',
+                fontsize=font_size,
+                fontweight=fontweight_map[font_style_choice],
+                fontstyle=fontstyle_map[font_style_choice],
+                color=text_color)
+
 
         ax1.set_xlabel("Time (s)", fontsize=font_size,
                        fontweight=fontweight_map[font_style_choice],
