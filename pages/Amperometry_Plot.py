@@ -7,33 +7,33 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
 # ======================
-# Sidebar inputs
+# Sidebar Inputs
 # ======================
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
 label = st.sidebar.text_input("Label", value="sensor1")
 
-start_time = st.sidebar.number_input("Start Time (s)", value=200)
-end_time = st.sidebar.number_input("End Time (s)", value=600)
+start_time = st.sidebar.number_input("Plot Start Time (s)", value=1500)
+end_time = st.sidebar.number_input("Plot End Time (s)", value=2000)
 
 overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
 show_spike_arrows = st.sidebar.checkbox("Show Spike Concentration Labels", value=True)
 
-spike_start = st.sidebar.number_input("Spike Start (s)", value=200)
-spike_interval = st.sidebar.number_input("Spike Interval (s)", value=30)
-spike_count = st.sidebar.number_input("Spike Count", value=10)
-conc_per_spike = st.sidebar.number_input("Conc/Spike (µM)", value=20.0)
+spike_start = st.sidebar.number_input("Spike Start Time (s)", value=1500)
+spike_interval = st.sidebar.number_input("Spike Interval (s)", value=50)
+spike_count = st.sidebar.number_input("Number of Spikes", value=10)
+conc_per_spike = st.sidebar.number_input("Concentration per Spike (µM)", value=20.0)
 
 ROLLING_WINDOW = 20
 SPIKE_WINDOW = 5
 
-TIME_COL = df.columns[3]
-CURRENT_COL = df.columns[6]
-
 # ======================
-# Load data
+# Load Data
 # ======================
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
+
+    TIME_COL = df.columns[3]
+    CURRENT_COL = df.columns[6]
 
     plot_df = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] <= end_time)].copy()
 
@@ -48,13 +48,14 @@ if uploaded_file is not None:
     )
 
     # ======================
-    # Spike logic (OLD)
+    # Spike Logic
     # ======================
     spike_times = np.arange(
         spike_start,
         spike_start + spike_interval * spike_count,
         spike_interval
     )
+
     concentrations = np.arange(
         conc_per_spike,
         conc_per_spike * (spike_count + 1),
@@ -69,10 +70,10 @@ if uploaded_file is not None:
         spike_currents.append(plot_df.loc[mask, CURRENT_COL].mean())
 
     y = np.array(spike_currents)
-    X = np.array(concentrations).reshape(-1, 1)
+    X = concentrations.reshape(-1, 1)
 
     # ======================
-    # Linear fit
+    # Linear Regression
     # ======================
     model = LinearRegression()
     model.fit(X, y)
@@ -83,18 +84,25 @@ if uploaded_file is not None:
     intercept = model.intercept_
     r2 = r2_score(y, y_pred)
 
-    LOD = 3 * np.std(y - y_pred) / slope
+    # ======================
+    # ✅ CORRECT LOD (baseline noise)
+    # ======================
+    baseline_mask = plot_df[TIME_COL] < spike_start
+    baseline_current = plot_df.loc[baseline_mask, CURRENT_COL]
+
+    baseline_std = baseline_current.std()
+    LOD = (3 * baseline_std) / slope
 
     # ======================
     # Plotting
     # ======================
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
 
-    # ---- Plot A: Trace ----
+    # ---- Plot A: Chronoamperometry ----
     if overlay_raw:
         ax1.plot(time, current_nA, linewidth=0.5, alpha=0.6)
 
-    ax1.plot(time, smoothed, linewidth=1.5)
+    ax1.plot(time, smoothed, linewidth=1.8, color="red")
 
     if show_spike_arrows:
         for t, conc in zip(spike_times, concentrations):
@@ -102,25 +110,28 @@ if uploaded_file is not None:
             ax1.annotate(
                 f"{int(conc)} µM",
                 xy=(t, yval),
-                xytext=(t, yval + 3),
-                arrowprops=dict(arrowstyle="->")
+                xytext=(t, yval + 5),
+                arrowprops=dict(arrowstyle="->", lw=1)
             )
 
-    ax1.set_title("A", loc="left")
+    ax1.set_xlim(start_time, end_time)
+    ax1.set_xticks(spike_times)
+    ax1.set_xticklabels(spike_times.astype(int))
+
     ax1.set_xlabel("Time (s)")
     ax1.set_ylabel("Current (nA)")
-    ax1.set_xticks(spike_times)
+    ax1.set_title("A", loc="left", fontweight="bold")
 
-    # ---- Plot B: Sensitivity ----
-    ax2.scatter(concentrations, y, s=60)
+    # ---- Plot B: Calibration ----
+    ax2.scatter(concentrations, y, s=70, edgecolors="black")
     ax2.plot(concentrations, y_pred, linewidth=2)
 
-    box_text = "\n".join([
-        f"Sensitivity = {slope:.2f} nA/µM",
-        f"y = {slope:.2f}x + {intercept:.2f}",
-        f"R² = {r2:.4f}",
-        f"LOD = {LOD:.2f} µM"
-    ])
+    box_text = (
+        f"R² = {r2:.4f}\n"
+        f"LOD = {LOD:.2f} µM\n"
+        f"Sensitivity = {slope:.2f} nA/µM\n"
+        f"y = {slope:.2f}x + {intercept:.2f}"
+    )
 
     ax2.text(
         0.05, 0.95, box_text,
@@ -129,10 +140,10 @@ if uploaded_file is not None:
         bbox=dict(boxstyle="round", pad=0.4)
     )
 
-    ax2.set_title("B", loc="left")
     ax2.set_xlabel("Concentration (µM)")
     ax2.set_ylabel("Current (nA)")
     ax2.set_xticks(concentrations)
+    ax2.set_title("B", loc="left", fontweight="bold")
 
     plt.tight_layout()
     st.pyplot(fig)
@@ -163,4 +174,7 @@ if uploaded_file is not None:
         file_name=f"{label}_results.csv"
     )
 
-    st.success(f"✅ Done! Label: {label}")
+    st.success("✅ Analysis complete")
+
+else:
+    st.warning("Please upload a CSV file.")
