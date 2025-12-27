@@ -6,83 +6,75 @@ from io import BytesIO
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-# ======================
+st.set_page_config(layout="wide")
+
+# =========================
 # Sidebar inputs
-# ======================
+# =========================
 uploaded_file = st.sidebar.file_uploader("Upload CSV", type="csv")
-label = st.sidebar.text_input("Label", value="sensor1")
 
-start_time = st.sidebar.number_input("Plot Start Time (s)", value=1500)
-end_time = st.sidebar.number_input("Plot End Time (s)", value=2000)
+plot_start = st.sidebar.number_input("Plot start time (s)", value=1450)
+spike_start = st.sidebar.number_input("Spike start time (s)", value=1500)
+spike_end   = st.sidebar.number_input("Spike end time (s)", value=1950)
+spike_interval = st.sidebar.number_input("Spike interval (s)", value=50)
 
-overlay_raw = st.sidebar.checkbox("Overlay raw trace", value=True)
-show_spike_arrows = st.sidebar.checkbox("Show Spike Concentration Labels", value=True)
+conc_per_spike = st.sidebar.number_input("Concentration per spike (µM)", value=20.0)
 
-spike_start = st.sidebar.number_input("Spike Start Time (s)", value=1500)
-spike_interval = st.sidebar.number_input("Spike Interval (s)", value=50)
-spike_count = st.sidebar.number_input("Number of Spikes", value=10)
-conc_per_spike = st.sidebar.number_input("Concentration per Spike (µM)", value=20.0)
+SPIKE_WINDOW = 5      # seconds for averaging
+SMOOTH_WINDOW = 20
 
-ROLLING_WINDOW = 20
-SPIKE_WINDOW = 5
-
-# ======================
+# =========================
 # Load data
-# ======================
+# =========================
 if uploaded_file is None:
-    st.warning("Please upload a CSV file.")
+    st.warning("Upload a CSV file")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
 
 TIME_COL = df.columns[3]     # time column
-CURRENT_COL = df.columns[6]  # current column
+CURR_COL = df.columns[6]     # current column
 
-# ======================
+# =========================
+# Generate spike times
+# =========================
+spike_times = np.arange(spike_start, spike_end + 1, spike_interval)
+concentrations = np.arange(
+    conc_per_spike,
+    conc_per_spike * (len(spike_times) + 1),
+    conc_per_spike
+)
+
+# =========================
 # Plot window (visual only)
-# ======================
-plot_df = df[(df[TIME_COL] >= start_time) & (df[TIME_COL] <= end_time)].copy()
+# =========================
+plot_df = df[df[TIME_COL] >= plot_start].copy()
 
 time = plot_df[TIME_COL].values
-current_nA = plot_df[CURRENT_COL].values
+current = plot_df[CURR_COL].values
 
-smoothed = (
-    pd.Series(current_nA)
-    .rolling(window=ROLLING_WINDOW, center=True)
+smooth = (
+    pd.Series(current)
+    .rolling(SMOOTH_WINDOW, center=True)
     .mean()
     .values
 )
 
-# ======================
-# Spike logic (EXACT experimental logic)
-# ======================
-spike_times = np.arange(
-    spike_start,
-    spike_start + spike_interval * spike_count,
-    spike_interval
-)
-
-concentrations = np.arange(
-    conc_per_spike,
-    conc_per_spike * (spike_count + 1),
-    conc_per_spike
-)
-
-# ======================
+# =========================
 # Extract spike currents
-# ======================
+# =========================
 spike_currents = []
 
 for t in spike_times:
     mask = (df[TIME_COL] >= t - SPIKE_WINDOW) & (df[TIME_COL] <= t + SPIKE_WINDOW)
-    spike_currents.append(df.loc[mask, CURRENT_COL].mean())
+    spike_currents.append(df.loc[mask, CURR_COL].mean())
 
 y = np.array(spike_currents)
 X = concentrations.reshape(-1, 1)
 
-# ======================
+# =========================
 # Linear regression
-# ======================
+# =========================
 model = LinearRegression()
 model.fit(X, y)
 
@@ -92,46 +84,41 @@ slope = model.coef_[0]
 intercept = model.intercept_
 r2 = r2_score(y, y_pred)
 
-# ======================
-# ✅ CORRECT LOD (RAW baseline before spike)
-# ======================
-baseline_mask = df[TIME_COL] < spike_start
-baseline_current = df.loc[baseline_mask, CURRENT_COL]
+# =========================
+# ✅ LOD from TRUE baseline (1450–1500)
+# =========================
+baseline_mask = (df[TIME_COL] >= plot_start) & (df[TIME_COL] < spike_start)
+baseline_current = df.loc[baseline_mask, CURR_COL]
 
 baseline_std = baseline_current.std()
 LOD = (3 * baseline_std) / slope
 
-# ======================
+# =========================
 # Plotting
-# ======================
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+# =========================
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
 
-# ---- Plot A: Chronoamperometry ----
-if overlay_raw:
-    ax1.plot(time, current_nA, linewidth=0.5, alpha=0.6)
+# ---- Plot A ----
+ax1.plot(time, smooth, color="red", linewidth=1.8, label="Smoothed")
+ax1.plot(time, current, color="gray", alpha=0.4, linewidth=0.5, label="Raw")
 
-ax1.plot(time, smoothed, color="red", linewidth=1.8)
+for t, c in zip(spike_times, concentrations):
+    yval = np.interp(t, time, smooth)
+    ax1.annotate(
+        f"{int(c)} µM",
+        xy=(t, yval),
+        xytext=(t, yval + 4),
+        arrowprops=dict(arrowstyle="->", lw=1)
+    )
 
-if show_spike_arrows:
-    for t, conc in zip(spike_times, concentrations):
-        yval = np.interp(t, time, smoothed)
-        ax1.annotate(
-            f"{int(conc)} µM",
-            xy=(t, yval),
-            xytext=(t, yval + 5),
-            arrowprops=dict(arrowstyle="->", lw=1)
-        )
-
-ax1.set_xlim(start_time, end_time)
+ax1.set_xlim(plot_start, spike_end + spike_interval)
 ax1.set_xticks(spike_times)
 ax1.set_xticklabels(spike_times.astype(int))
-ax1.tick_params(axis="x", rotation=45)
-
 ax1.set_xlabel("Time (s)")
 ax1.set_ylabel("Current (nA)")
 ax1.set_title("A", loc="left", fontweight="bold")
 
-# ---- Plot B: Calibration ----
+# ---- Plot B ----
 ax2.scatter(concentrations, y, s=70, edgecolors="black")
 ax2.plot(concentrations, y_pred, linewidth=2)
 
@@ -145,42 +132,41 @@ box_text = (
 ax2.text(
     0.05, 0.95, box_text,
     transform=ax2.transAxes,
-    verticalalignment="top",
+    va="top",
     bbox=dict(boxstyle="round", pad=0.4)
 )
 
+ax2.set_xticks(concentrations)
 ax2.set_xlabel("Concentration (µM)")
 ax2.set_ylabel("Current (nA)")
-ax2.set_xticks(concentrations)
 ax2.set_title("B", loc="left", fontweight="bold")
 
 plt.tight_layout()
 st.pyplot(fig)
 
-# ======================
+# =========================
 # Downloads
-# ======================
+# =========================
 buf = BytesIO()
-fig.savefig(buf, format="png", dpi=300)
+fig.savefig(buf, dpi=300, format="png")
 
 st.download_button(
-    "📷 Download Figure",
+    "Download Figure",
     buf.getvalue(),
-    file_name=f"{label}_figure.png",
+    file_name="chrono_calibration.png",
     mime="image/png"
 )
 
 result_df = pd.DataFrame({
-    "Spike Time (s)": spike_times,
+    "Spike time (s)": spike_times,
     "Concentration (µM)": concentrations,
-    "Avg Current (nA)": y,
-    "Predicted Current (nA)": y_pred
+    "Avg current (nA)": y
 })
 
 st.download_button(
-    "📄 Download CSV Result Table",
+    "Download Results CSV",
     result_df.to_csv(index=False),
-    file_name=f"{label}_results.csv"
+    file_name="results.csv"
 )
 
-st.success("✅ Analysis complete (LOD fixed, ticks aligned)")
+st.success("✅ Done — logic now exactly matches your experiment")
