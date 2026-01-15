@@ -32,7 +32,7 @@ if uploaded_files:
         df = pd.read_csv(file)
         df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
         voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e6  # Convert A to µA
+        current = df["Current (A)"].values * 1e9  # Convert A to µA
 
         ax.plot(voltage, current, label=label, color=color, linewidth=2)
 
@@ -47,3 +47,4 @@ if uploaded_files:
 
     ax.legend(facecolor=bg_color, edgecolor=text_color, labelcolor=text_color)
     st.pyplot(fig)
+
