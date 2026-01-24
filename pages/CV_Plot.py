@@ -47,7 +47,7 @@ if uploaded_files:
         )
 
         voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e9  # A → nA
+        current = df["Current (A)"].values * 1e6  # A → nA
 
         # === Automatically assigned professional color ===
         color = color_palette(i % color_palette.N)
@@ -91,3 +91,4 @@ if uploaded_files:
     )
 
     st.pyplot(fig)
+
