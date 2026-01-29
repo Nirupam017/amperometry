@@ -40,7 +40,7 @@ if uploaded_files:
 
             ax_nyq.plot(
                 Z_real,
-                -Z_imag,
+                Z_imag,
                 'o-',
                 color=color_palette(i),
                 linewidth=2,
