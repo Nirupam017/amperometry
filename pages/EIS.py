@@ -72,7 +72,7 @@ if uploaded_files:
 
             ax_nyq.plot(
                 Z_real,
-                -Z_imag,          # plot −Z″ (Nyquist convention)
+                Z_imag,          # plot −Z″ (Nyquist convention)
                 marker='o',
                 linestyle='-',
                 linewidth=2,
