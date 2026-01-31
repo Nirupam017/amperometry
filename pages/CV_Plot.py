@@ -68,7 +68,7 @@ if uploaded_files:
         color=text_color
     )
     ax.set_ylabel(
-        "Current (nA)",
+        "Current (μA)",
         fontsize=font_size,
         fontweight=font_weight,
         color=text_color
@@ -91,5 +91,6 @@ if uploaded_files:
     )
 
     st.pyplot(fig)
+
 
 
