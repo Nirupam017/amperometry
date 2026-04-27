@@ -16,8 +16,24 @@ st.sidebar.markdown("### 🎨 Font Customization")
 font_size = st.sidebar.slider("Font Size", min_value=8, max_value=20, value=14)
 font_weight = st.sidebar.selectbox("Font Weight", ["normal", "bold"])
 
-# === Professional Color Cycle ===
-# Change palette name if needed: "tab10", "Set2", "Dark2", "Paired"
+# === Axis Scaling Controls ===
+st.sidebar.markdown("### 📏 Axis Scale Settings")
+
+use_custom_x = st.sidebar.checkbox("Set X-axis range manually")
+use_custom_y = st.sidebar.checkbox("Set Y-axis range manually")
+
+x_min, x_max = None, None
+y_min, y_max = None, None
+
+if use_custom_x:
+    x_min = st.sidebar.number_input("X min", value=-1.0, step=0.1)
+    x_max = st.sidebar.number_input("X max", value=1.0, step=0.1)
+
+if use_custom_y:
+    y_min = st.sidebar.number_input("Y min (μA)", value=-10.0, step=1.0)
+    y_max = st.sidebar.number_input("Y max (μA)", value=10.0, step=1.0)
+
+# === Professional Color Palette ===
 color_palette = plt.get_cmap("tab10")
 
 # === File Upload ===
@@ -47,9 +63,8 @@ if uploaded_files:
         )
 
         voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e6  # A → microAmp
+        current = df["Current (A)"].values * 1e6  # Convert A → μA
 
-        # === Automatically assigned professional color ===
         color = color_palette(i % color_palette.N)
 
         ax.plot(
@@ -59,6 +74,19 @@ if uploaded_files:
             linewidth=2,
             color=color
         )
+
+    # === Apply Manual Axis Scaling ===
+    if use_custom_x:
+        if x_min < x_max:
+            ax.set_xlim(x_min, x_max)
+        else:
+            st.sidebar.warning("⚠️ X min must be less than X max")
+
+    if use_custom_y:
+        if y_min < y_max:
+            ax.set_ylim(y_min, y_max)
+        else:
+            st.sidebar.warning("⚠️ Y min must be less than Y max")
 
     # === Styling ===
     ax.set_xlabel(
@@ -81,6 +109,7 @@ if uploaded_files:
     )
 
     ax.tick_params(colors=text_color, labelsize=font_size)
+
     for spine in ax.spines.values():
         spine.set_color(text_color)
 
@@ -91,6 +120,3 @@ if uploaded_files:
     )
 
     st.pyplot(fig)
-
-
-
