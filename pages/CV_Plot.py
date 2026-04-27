@@ -15,7 +15,6 @@ text_color = "black" if bg_color == "white" else "white"
 # === Font ===
 st.sidebar.markdown("### 🎨 Font")
 font_size = st.sidebar.slider("Font Size", 8, 20, 14)
-font_weight = st.sidebar.selectbox("Font Weight", ["normal", "bold"])
 
 # === Axis Control ===
 st.sidebar.markdown("### 📏 Axis Control")
@@ -30,24 +29,19 @@ if use_custom_y:
     y_min = st.sidebar.number_input("Y min", value=-80.0)
     y_max = st.sidebar.number_input("Y max", value=20.0)
 
+# === Scan Direction Selection ===
+st.sidebar.markdown("### 🔄 Scan Selection")
+scan_mode = st.sidebar.selectbox(
+    "Select Scan Branch",
+    ["Full", "Forward", "Reverse"]
+)
+
 # === Calibration ===
 st.sidebar.markdown("### 🧪 Calibration")
 do_calibration = st.sidebar.checkbox("Enable Calibration")
 
-use_peak = False
-target_voltage = None
-
 if do_calibration:
-    mode = st.sidebar.radio("Mode", ["Manual Voltage", "Auto Peak"])
-
-    if mode == "Manual Voltage":
-        target_voltage = st.sidebar.number_input("Voltage (V)", value=-0.2)
-    else:
-        use_peak = True
-        peak_type = st.sidebar.selectbox("Peak Type", ["Anodic", "Cathodic"])
-
-    use_avg = st.sidebar.checkbox("Use averaging window", value=True)
-    window = st.sidebar.slider("Window size", 1, 20, 5)
+    target_voltage = st.sidebar.number_input("Voltage (V)", value=-0.25)
 
 # === Upload ===
 uploaded_files = st.file_uploader(
@@ -58,42 +52,51 @@ uploaded_files = st.file_uploader(
 
 color_palette = plt.get_cmap("tab10")
 
-# === Safe Data Loading ===
 data_store = []
 
+# === Load Data Safely ===
 if uploaded_files:
     for file in uploaded_files:
         try:
             file.seek(0)
             df = pd.read_csv(file)
-
-            if df.empty:
-                st.warning(f"{file.name} is empty. Skipping.")
-                continue
-
-        except Exception:
-            st.warning(f"{file.name} could not be read. Skipping.")
+        except:
+            st.warning(f"{file.name} unreadable. Skipping.")
             continue
 
-        # === Auto column detection (important for real CV files) ===
-        possible_voltage = ["Working Electrode (V)", "Ewe/V", "Voltage", "Potential"]
-        possible_current = ["Current (A)", "I/A", "Current"]
+        if df.empty:
+            st.warning(f"{file.name} empty. Skipping.")
+            continue
 
-        v_col = next((c for c in possible_voltage if c in df.columns), None)
-        i_col = next((c for c in possible_current if c in df.columns), None)
+        # Auto detect columns
+        v_col = next((c for c in df.columns if "V" in c or "Potential" in c), None)
+        i_col = next((c for c in df.columns if "A" in c or "Current" in c), None)
 
         if v_col is None or i_col is None:
-            st.warning(f"{file.name} missing required columns.")
+            st.warning(f"{file.name} missing columns.")
             continue
 
         df.dropna(subset=[v_col, i_col], inplace=True)
 
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6  # convert to µA
+        current = df[i_col].values * 1e6
+
+        # === Detect scan direction using slope ===
+        dV = np.gradient(voltage)
+
+        if scan_mode == "Forward":
+            mask = dV > 0
+            voltage = voltage[mask]
+            current = current[mask]
+
+        elif scan_mode == "Reverse":
+            mask = dV < 0
+            voltage = voltage[mask]
+            current = current[mask]
 
         data_store.append((file.name, voltage, current))
 
-# === Plotting ===
+# === Plot ===
 if data_store:
 
     fig, ax = plt.subplots(figsize=(8,6), facecolor=bg_color)
@@ -109,27 +112,18 @@ if data_store:
             conc = st.number_input(f"Concentration (µM) {i}", value=20.0, key=f"conc_{i}")
 
         color = color_palette(i % color_palette.N)
-        ax.plot(voltage, current, label=label, linewidth=2, color=color)
+        ax.plot(voltage, current, label=label, color=color, linewidth=2)
 
-        # === Calibration extraction ===
+        # === Calibration ===
         if do_calibration:
-
-            if use_peak:
-                idx = np.argmax(current) if peak_type == "Anodic" else np.argmin(current)
-            else:
-                idx = (np.abs(voltage - target_voltage)).argmin()
-
-            if use_avg:
-                start = max(0, idx - window)
-                end = idx + window
-                current_val = np.mean(current[start:end])
-            else:
-                current_val = current[idx]
+            # Interpolated value (accurate)
+            current_val = np.interp(target_voltage, voltage, current)
 
             calibration_currents.append(current_val)
             concentrations.append(conc)
 
-            ax.scatter(voltage[idx], current[idx], color=color, s=50)
+            # Plot SAME value (fix mismatch)
+            ax.scatter(target_voltage, current_val, color=color, s=60, edgecolors='black')
 
     # === Axis scaling ===
     if use_custom_x and x_min < x_max:
@@ -147,9 +141,9 @@ if data_store:
     for spine in ax.spines.values():
         spine.set_color(text_color)
 
-    ax.legend(facecolor=bg_color, labelcolor=text_color)
+    ax.legend()
 
-    # === Inset zoom ===
+    # === Inset Zoom ===
     axins = inset_axes(ax, width="40%", height="40%", loc="lower right")
 
     for i, (name, voltage, current) in enumerate(data_store):
@@ -173,7 +167,8 @@ if data_store:
         slope, intercept = np.polyfit(conc_array, curr_array, 1)
         fit = slope * conc_array + intercept
 
-        r2 = 1 - (np.sum((curr_array - fit)**2) / np.sum((curr_array - np.mean(curr_array))**2))
+        r2 = 1 - (np.sum((curr_array - fit)**2) /
+                  np.sum((curr_array - np.mean(curr_array))**2))
 
         fig2, ax2 = plt.subplots()
 
@@ -181,7 +176,7 @@ if data_store:
         ax2.plot(conc_array, fit, linestyle="--")
 
         ax2.set_xlabel("Concentration (µM)")
-        ax2.set_ylabel("Current (µA)")
+        ax2.set_ylabel(f"Current at {target_voltage} V (µA)")
         ax2.set_title(f"Sensitivity = {slope:.3f} µA/µM | R² = {r2:.4f}")
 
         st.pyplot(fig2)
