@@ -49,43 +49,73 @@ if do_calibration:
     use_avg = st.sidebar.checkbox("Use averaging window", value=True)
     window = st.sidebar.slider("Window size", 1, 20, 5)
 
-# === Plot Settings ===
+# === Upload ===
+uploaded_files = st.file_uploader(
+    "Upload CV CSV files",
+    type="csv",
+    accept_multiple_files=True
+)
+
 color_palette = plt.get_cmap("tab10")
 
-# === Upload ===
-uploaded_files = st.file_uploader("Upload CV CSV files", type="csv", accept_multiple_files=True)
+# === Safe Data Loading ===
+data_store = []
 
 if uploaded_files:
+    for file in uploaded_files:
+        try:
+            file.seek(0)
+            df = pd.read_csv(file)
+
+            if df.empty:
+                st.warning(f"{file.name} is empty. Skipping.")
+                continue
+
+        except Exception:
+            st.warning(f"{file.name} could not be read. Skipping.")
+            continue
+
+        # === Auto column detection (important for real CV files) ===
+        possible_voltage = ["Working Electrode (V)", "Ewe/V", "Voltage", "Potential"]
+        possible_current = ["Current (A)", "I/A", "Current"]
+
+        v_col = next((c for c in possible_voltage if c in df.columns), None)
+        i_col = next((c for c in possible_current if c in df.columns), None)
+
+        if v_col is None or i_col is None:
+            st.warning(f"{file.name} missing required columns.")
+            continue
+
+        df.dropna(subset=[v_col, i_col], inplace=True)
+
+        voltage = df[v_col].values
+        current = df[i_col].values * 1e6  # convert to µA
+
+        data_store.append((file.name, voltage, current))
+
+# === Plotting ===
+if data_store:
+
     fig, ax = plt.subplots(figsize=(8,6), facecolor=bg_color)
     ax.set_facecolor(bg_color)
 
     calibration_currents = []
     concentrations = []
 
-    for i, file in enumerate(uploaded_files):
+    for i, (name, voltage, current) in enumerate(data_store):
 
-        with st.expander(f"{file.name} settings"):
-            label = st.text_input(f"Label {i}", file.name, key=f"label_{i}")
+        with st.expander(f"{name} settings"):
+            label = st.text_input(f"Label {i}", name, key=f"label_{i}")
             conc = st.number_input(f"Concentration (µM) {i}", value=20.0, key=f"conc_{i}")
 
-        df = pd.read_csv(file)
-        df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
-
-        voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e6
-
         color = color_palette(i % color_palette.N)
-
         ax.plot(voltage, current, label=label, linewidth=2, color=color)
 
-        # === Calibration Extraction ===
+        # === Calibration extraction ===
         if do_calibration:
 
             if use_peak:
-                if peak_type == "Anodic":
-                    idx = np.argmax(current)
-                else:
-                    idx = np.argmin(current)
+                idx = np.argmax(current) if peak_type == "Anodic" else np.argmin(current)
             else:
                 idx = (np.abs(voltage - target_voltage)).argmin()
 
@@ -99,17 +129,16 @@ if uploaded_files:
             calibration_currents.append(current_val)
             concentrations.append(conc)
 
-            # Mark point on graph
             ax.scatter(voltage[idx], current[idx], color=color, s=50)
 
-    # === Axis apply ===
+    # === Axis scaling ===
     if use_custom_x and x_min < x_max:
         ax.set_xlim(x_min, x_max)
 
     if use_custom_y and y_min < y_max:
         ax.set_ylim(y_min, y_max)
 
-    # === Labels ===
+    # === Styling ===
     ax.set_xlabel("Voltage (V)", fontsize=font_size, color=text_color)
     ax.set_ylabel("Current (µA)", fontsize=font_size, color=text_color)
     ax.set_title("CV Overlay", fontsize=font_size+2, color=text_color)
@@ -120,15 +149,10 @@ if uploaded_files:
 
     ax.legend(facecolor=bg_color, labelcolor=text_color)
 
-    # === Inset Zoom ===
+    # === Inset zoom ===
     axins = inset_axes(ax, width="40%", height="40%", loc="lower right")
-    for i, file in enumerate(uploaded_files):
-        df = pd.read_csv(file)
-        df.dropna(subset=["Working Electrode (V)", "Current (A)"], inplace=True)
 
-        voltage = df["Working Electrode (V)"].values
-        current = df["Current (A)"].values * 1e6
-
+    for i, (name, voltage, current) in enumerate(data_store):
         color = color_palette(i % color_palette.N)
         axins.plot(voltage, current, color=color)
 
