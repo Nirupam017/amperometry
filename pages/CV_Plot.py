@@ -1,11 +1,10 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 st.set_page_config(layout="wide")
-st.title("🔬 CV Peak Current Extractor")
+st.title("🔬 Advanced CV Analysis Tool (Accurate Calibration)")
 
 # === Theme ===
 bg_choice = st.sidebar.selectbox("Background Color", ["White", "Black"])
@@ -25,21 +24,19 @@ if use_custom_y:
     y_min = st.sidebar.number_input("Y min", value=-80.0)
     y_max = st.sidebar.number_input("Y max", value=20.0)
 
-# === Peak Selection ===
-st.sidebar.markdown("### 🎯 Peak Selection")
+# === Calibration Settings ===
+st.sidebar.markdown("### 🧪 Calibration")
 
-peak_upper_v = st.sidebar.number_input("Upper Peak Voltage (Oxidation)", value=0.1)
-peak_lower_v = st.sidebar.number_input("Lower Peak Voltage (Reduction)", value=-0.25)
+do_calibration = st.sidebar.checkbox("Enable Calibration")
 
-peak_mode = st.sidebar.selectbox(
-    "Which Peak to Display",
-    ["Upper", "Lower", "Both"]
-)
+if do_calibration:
+    target_voltage = st.sidebar.number_input("Voltage (V)", value=-0.25)
 
-direction = st.sidebar.selectbox(
-    "Scan branch",
-    ["Full", "Forward", "Reverse"]
-)
+    # 🔥 FIX: Choose scan branch
+    direction = st.sidebar.selectbox(
+        "Scan branch",
+        ["Full", "Forward", "Reverse"]
+    )
 
 # === Upload ===
 uploaded_files = st.file_uploader(
@@ -50,7 +47,7 @@ uploaded_files = st.file_uploader(
 
 color_palette = plt.get_cmap("tab10")
 
-# === Data Store ===
+# === Safe Data Loading ===
 data_store = []
 
 if uploaded_files:
@@ -67,7 +64,7 @@ if uploaded_files:
             st.warning(f"{file.name} could not be read. Skipping.")
             continue
 
-        # === Column Detection ===
+        # === Auto column detection ===
         possible_voltage = ["Working Electrode (V)", "Ewe/V", "Voltage"]
         possible_current = ["Current (A)", "I/A", "Current"]
 
@@ -81,7 +78,7 @@ if uploaded_files:
         df.dropna(subset=[v_col, i_col], inplace=True)
 
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6  # µA
+        current = df[i_col].values * 1e6
 
         data_store.append((file.name, voltage, current))
 
@@ -91,15 +88,17 @@ if data_store:
     fig, ax = plt.subplots(figsize=(8,6), facecolor=bg_color)
     ax.set_facecolor(bg_color)
 
-    results = []
+    calibration_currents = []
+    concentrations = []
 
     for i, (name, voltage, current) in enumerate(data_store):
 
         with st.expander(f"{name} settings"):
             label = st.text_input(f"Label {i}", name, key=f"label_{i}")
+            conc = st.number_input(f"Concentration (µM) {i}", value=20.0, key=f"conc_{i}")
 
-        # === Branch selection ===
-        if direction != "Full":
+        # 🔥 FIX: separate scan branches
+        if do_calibration and direction != "Full":
             mid = len(voltage) // 2
             if direction == "Forward":
                 voltage_use = voltage[:mid]
@@ -114,21 +113,24 @@ if data_store:
         color = color_palette(i % color_palette.N)
         ax.plot(voltage, current, label=label, linewidth=2, color=color)
 
-        entry = {"File": label}
+        # === Calibration ===
+        if do_calibration:
 
-        # === Upper Peak ===
-        if peak_mode in ["Upper", "Both"]:
-            upper_current = np.interp(peak_upper_v, voltage_use, current_use)
-            ax.scatter(peak_upper_v, upper_current, color=color, s=60, edgecolors='black')
-            entry["Upper Peak (µA)"] = upper_current
+            # 🔥 FIX: interpolate instead of nearest point
+            current_val = np.interp(target_voltage, voltage_use, current_use)
 
-        # === Lower Peak ===
-        if peak_mode in ["Lower", "Both"]:
-            lower_current = np.interp(peak_lower_v, voltage_use, current_use)
-            ax.scatter(peak_lower_v, lower_current, color=color, s=60, edgecolors='black')
-            entry["Lower Peak (µA)"] = lower_current
+            calibration_currents.append(current_val)
+            concentrations.append(conc)
 
-        results.append(entry)
+            # 🔥 FIX: marker matches calibration exactly
+            ax.scatter(
+                target_voltage,
+                current_val,
+                color=color,
+                s=60,
+                edgecolors='black',
+                zorder=5
+            )
 
     # === Axis ===
     if use_custom_x and x_min < x_max:
@@ -147,7 +149,7 @@ if data_store:
 
     ax.legend(facecolor=bg_color, labelcolor=text_color)
 
-    # === Inset ===
+    # === Inset zoom ===
     axins = inset_axes(ax, width="40%", height="40%", loc="lower right")
 
     for i, (name, voltage, current) in enumerate(data_store):
@@ -160,8 +162,30 @@ if data_store:
 
     st.pyplot(fig)
 
-    # === Display Results ===
-    st.subheader("📊 Extracted Peak Currents")
+    # === Calibration Plot ===
+    if do_calibration and len(concentrations) > 1:
 
-    df_results = pd.DataFrame(results)
-    st.dataframe(df_results, use_container_width=True)
+        st.subheader("📊 Calibration Curve")
+
+        conc_array = np.array(concentrations)
+        curr_array = np.array(calibration_currents)
+
+        slope, intercept = np.polyfit(conc_array, curr_array, 1)
+        fit = slope * conc_array + intercept
+
+        r2 = 1 - (np.sum((curr_array - fit)**2) /
+                  np.sum((curr_array - np.mean(curr_array))**2))
+
+        fig2, ax2 = plt.subplots()
+
+        ax2.scatter(conc_array, curr_array)
+        ax2.plot(conc_array, fit, linestyle="--")
+
+        ax2.set_xlabel("Concentration (µM)")
+        ax2.set_ylabel(f"Current at {target_voltage} V (µA)")
+        ax2.set_title(f"Sensitivity = {slope:.3f} µA/µM | R² = {r2:.4f}")
+
+        st.pyplot(fig2)
+
+        st.write(f"**Sensitivity:** {slope:.3f} µA/µM")
+        st.write(f"**R²:** {r2:.4f}")
