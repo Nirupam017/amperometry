@@ -27,17 +27,19 @@ if use_custom_y:
 
 # === Calibration Settings ===
 st.sidebar.markdown("### 🧪 Calibration")
-
 do_calibration = st.sidebar.checkbox("Enable Calibration")
 
 if do_calibration:
     target_voltage = st.sidebar.number_input("Voltage (V)", value=-0.25)
 
-    # 🔥 FIX: Choose scan branch
-    direction = st.sidebar.selectbox(
-        "Scan branch",
-        ["Full", "Forward", "Reverse"]
+    # ✅ Top / Bottom curve selection
+    curve_choice = st.sidebar.selectbox(
+        "Select Curve",
+        ["Full", "Top Curve", "Bottom Curve"]
     )
+
+# === Inset Control ===
+show_inset = st.sidebar.checkbox("Show Zoom Inset")
 
 # === Upload ===
 uploaded_files = st.file_uploader(
@@ -48,7 +50,7 @@ uploaded_files = st.file_uploader(
 
 color_palette = plt.get_cmap("tab10")
 
-# === Safe Data Loading ===
+# === Data Store ===
 data_store = []
 
 if uploaded_files:
@@ -79,14 +81,14 @@ if uploaded_files:
         df.dropna(subset=[v_col, i_col], inplace=True)
 
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6
+        current = df[i_col].values * 1e6  # µA
 
         data_store.append((file.name, voltage, current))
 
 # === Plot ===
 if data_store:
 
-    fig, ax = plt.subplots(figsize=(8,6), facecolor=bg_color)
+    fig, ax = plt.subplots(figsize=(8, 6), facecolor=bg_color)
     ax.set_facecolor(bg_color)
 
     calibration_currents = []
@@ -98,32 +100,40 @@ if data_store:
             label = st.text_input(f"Label {i}", name, key=f"label_{i}")
             conc = st.number_input(f"Concentration (µM) {i}", value=20.0, key=f"conc_{i}")
 
-        # 🔥 FIX: separate scan branches
-        if do_calibration and direction != "Full":
-            mid = len(voltage) // 2
-            if direction == "Forward":
-                voltage_use = voltage[:mid]
-                current_use = current[:mid]
+        color = color_palette(i % color_palette.N)
+        ax.plot(voltage, current, label=label, linewidth=2, color=color)
+
+        # === Curve selection logic ===
+        if do_calibration and curve_choice != "Full":
+
+            # sort data for consistency
+            sort_idx = np.argsort(voltage)
+            voltage_sorted = voltage[sort_idx]
+            current_sorted = current[sort_idx]
+
+            median_current = np.median(current_sorted)
+
+            if curve_choice == "Top Curve":
+                mask = current_sorted >= median_current
             else:
-                voltage_use = voltage[mid:]
-                current_use = current[mid:]
+                mask = current_sorted < median_current
+
+            voltage_use = voltage_sorted[mask]
+            current_use = current_sorted[mask]
+
         else:
             voltage_use = voltage
             current_use = current
 
-        color = color_palette(i % color_palette.N)
-        ax.plot(voltage, current, label=label, linewidth=2, color=color)
-
         # === Calibration ===
         if do_calibration:
 
-            # 🔥 FIX: interpolate instead of nearest point
+            # interpolation
             current_val = np.interp(target_voltage, voltage_use, current_use)
 
             calibration_currents.append(current_val)
             concentrations.append(conc)
 
-            # 🔥 FIX: marker matches calibration exactly
             ax.scatter(
                 target_voltage,
                 current_val,
@@ -150,20 +160,21 @@ if data_store:
 
     ax.legend(facecolor=bg_color, labelcolor=text_color)
 
-    # === Inset zoom ===
-    axins = inset_axes(ax, width="40%", height="40%", loc="lower right")
+    # === Optional Inset ===
+    if show_inset:
+        axins = inset_axes(ax, width="40%", height="40%", loc="lower right")
 
-    for i, (name, voltage, current) in enumerate(data_store):
-        color = color_palette(i % color_palette.N)
-        axins.plot(voltage, current, color=color)
+        for i, (name, voltage, current) in enumerate(data_store):
+            color = color_palette(i % color_palette.N)
+            axins.plot(voltage, current, color=color)
 
-    axins.set_xlim(-0.4, 0.0)
-    axins.set_ylim(-30, 10)
-    axins.set_title("Zoom")
+        axins.set_xlim(-0.4, 0.0)
+        axins.set_ylim(-30, 10)
+        axins.set_title("Zoom")
 
     st.pyplot(fig)
 
-    # === Calibration Plot ===
+    # === Calibration Curve ===
     if do_calibration and len(concentrations) > 1:
 
         st.subheader("📊 Calibration Curve")
@@ -174,8 +185,8 @@ if data_store:
         slope, intercept = np.polyfit(conc_array, curr_array, 1)
         fit = slope * conc_array + intercept
 
-        r2 = 1 - (np.sum((curr_array - fit)**2) /
-                  np.sum((curr_array - np.mean(curr_array))**2))
+        r2 = 1 - (np.sum((curr_array - fit) ** 2) /
+                  np.sum((curr_array - np.mean(curr_array)) ** 2))
 
         fig2, ax2 = plt.subplots()
 
