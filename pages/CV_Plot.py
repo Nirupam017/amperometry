@@ -4,12 +4,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
-st.title("🔬 CV Peak Analysis Tool (Oxidation + Reduction)")
+st.title("🔬 CV Analysis Tool (User-Controlled)")
 
 # === Theme ===
 bg_choice = st.sidebar.selectbox("Background Color", ["White", "Black"])
 bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
+
+# === Calibration Settings ===
+st.sidebar.markdown("### 🧪 Measurement Settings")
+
+target_voltage = st.sidebar.number_input("Voltage (V)", value=-0.25)
+
+scan_choice = st.sidebar.selectbox(
+    "Select Scan",
+    ["Full", "Forward", "Reverse"]
+)
 
 # === Upload ===
 uploaded_files = st.file_uploader(
@@ -19,15 +29,6 @@ uploaded_files = st.file_uploader(
 )
 
 color_palette = plt.get_cmap("tab10")
-
-# === Peak Detection Functions ===
-def find_oxidation_peak(voltage, current):
-    idx = np.argmax(current)
-    return voltage[idx], current[idx]
-
-def find_reduction_peak(voltage, current):
-    idx = np.argmin(current)
-    return voltage[idx], current[idx]
 
 # === Data Store ===
 data_store = []
@@ -63,8 +64,7 @@ if data_store:
     fig, ax = plt.subplots(figsize=(8,6), facecolor=bg_color)
     ax.set_facecolor(bg_color)
 
-    ox_currents = []
-    red_currents = []
+    calibration_currents = []
     concentrations = []
 
     for i, (name, voltage, current) in enumerate(data_store):
@@ -76,45 +76,49 @@ if data_store:
         color = color_palette(i % color_palette.N)
         ax.plot(voltage, current, label=label, linewidth=2, color=color)
 
-        # === Split forward & reverse ===
+        # === Split CV safely ===
+        voltage = np.array(voltage)
+        current = np.array(current)
+
         turning_idx = np.argmax(voltage)
 
-        forward_v = voltage[:turning_idx]
-        forward_i = current[:turning_idx]
-
-        reverse_v = voltage[turning_idx:]
-        reverse_i = current[turning_idx:]
-
-        # === Oxidation peak (max current from both branches) ===
-        Ep_f, Ip_f = find_oxidation_peak(forward_v, forward_i)
-        Ep_r, Ip_r = find_oxidation_peak(reverse_v, reverse_i)
-
-        if Ip_f > Ip_r:
-            Ep_ox, Ip_ox = Ep_f, Ip_f
+        if turning_idx == 0 or turning_idx == len(voltage) - 1:
+            v_use = voltage
+            i_use = current
         else:
-            Ep_ox, Ip_ox = Ep_r, Ip_r
+            if scan_choice == "Forward":
+                v_use = voltage[:turning_idx]
+                i_use = current[:turning_idx]
+            elif scan_choice == "Reverse":
+                v_use = voltage[turning_idx:]
+                i_use = current[turning_idx:]
+            else:
+                v_use = voltage
+                i_use = current
 
-        # === Reduction peak (min current from both branches) ===
-        Ep_f_r, Ip_f_r = find_reduction_peak(forward_v, forward_i)
-        Ep_r_r, Ip_r_r = find_reduction_peak(reverse_v, reverse_i)
+        # === Interpolation ===
+        try:
+            current_val = np.interp(target_voltage, v_use, i_use)
+        except:
+            current_val = np.nan
 
-        if Ip_f_r < Ip_r_r:
-            Ep_red, Ip_red = Ep_f_r, Ip_f_r
-        else:
-            Ep_red, Ip_red = Ep_r_r, Ip_r_r
-
-        # Store
-        ox_currents.append(Ip_ox)
-        red_currents.append(Ip_red)
+        calibration_currents.append(current_val)
         concentrations.append(conc)
 
-        # Plot peaks
-        ax.scatter(Ep_ox, Ip_ox, color=color, edgecolors='black', s=80, zorder=5)
-        ax.scatter(Ep_red, Ip_red, color=color, edgecolors='black', s=80, marker='s', zorder=5)
+        # Plot marker
+        if not np.isnan(current_val):
+            ax.scatter(
+                target_voltage,
+                current_val,
+                color=color,
+                edgecolors='black',
+                s=80,
+                zorder=5
+            )
 
     ax.set_xlabel("Voltage (V)", color=text_color)
     ax.set_ylabel("Current (µA)", color=text_color)
-    ax.set_title("CV Overlay with Peak Detection", color=text_color)
+    ax.set_title("CV Overlay", color=text_color)
 
     ax.tick_params(colors=text_color)
     for spine in ax.spines.values():
@@ -124,49 +128,36 @@ if data_store:
 
     st.pyplot(fig)
 
-    # === Oxidation Calibration ===
+    # === Calibration ===
     if len(concentrations) > 1:
 
-        st.subheader("📊 Oxidation Peak Calibration")
+        st.subheader("📊 Calibration Curve")
 
         conc = np.array(concentrations)
-        ox = np.array(ox_currents)
+        curr = np.array(calibration_currents)
 
-        slope, intercept = np.polyfit(conc, ox, 1)
-        fit = slope * conc + intercept
+        # remove NaNs
+        mask = ~np.isnan(curr)
+        conc = conc[mask]
+        curr = curr[mask]
 
-        r2 = 1 - (np.sum((ox - fit)**2) /
-                  np.sum((ox - np.mean(ox))**2))
+        if len(conc) > 1:
 
-        fig2, ax2 = plt.subplots()
-        ax2.scatter(conc, ox)
-        ax2.plot(conc, fit, linestyle="--")
+            slope, intercept = np.polyfit(conc, curr, 1)
+            fit = slope * conc + intercept
 
-        ax2.set_xlabel("Concentration (µM)")
-        ax2.set_ylabel("Oxidation Peak Current (µA)")
-        ax2.set_title(f"Sensitivity = {slope:.3f} µA/µM | R² = {r2:.4f}")
+            r2 = 1 - (np.sum((curr - fit)**2) /
+                      np.sum((curr - np.mean(curr))**2))
 
-        st.pyplot(fig2)
+            fig2, ax2 = plt.subplots()
+            ax2.scatter(conc, curr)
+            ax2.plot(conc, fit, linestyle="--")
 
-    # === Reduction Calibration ===
-    if len(concentrations) > 1:
+            ax2.set_xlabel("Concentration (µM)")
+            ax2.set_ylabel(f"Current at {target_voltage} V (µA)")
+            ax2.set_title(f"Sensitivity = {slope:.3f} µA/µM | R² = {r2:.4f}")
 
-        st.subheader("📊 Reduction Peak Calibration")
+            st.pyplot(fig2)
 
-        red = np.array(red_currents)
-
-        slope, intercept = np.polyfit(conc, red, 1)
-        fit = slope * conc + intercept
-
-        r2 = 1 - (np.sum((red - fit)**2) /
-                  np.sum((red - np.mean(red))**2))
-
-        fig3, ax3 = plt.subplots()
-        ax3.scatter(conc, red)
-        ax3.plot(conc, fit, linestyle="--")
-
-        ax3.set_xlabel("Concentration (µM)")
-        ax3.set_ylabel("Reduction Peak Current (µA)")
-        ax3.set_title(f"Sensitivity = {slope:.3f} µA/µM | R² = {r2:.4f}")
-
-        st.pyplot(fig3)
+            st.write(f"**Sensitivity:** {slope:.3f} µA/µM")
+            st.write(f"**R²:** {r2:.4f}")
