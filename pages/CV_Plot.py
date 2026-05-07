@@ -18,6 +18,27 @@ bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
 
 # =========================
+# Peak Analysis Settings
+# =========================
+st.sidebar.markdown("## 📍 Peak Current Analysis")
+
+enable_peak = st.sidebar.checkbox(
+    "Enable Peak Current Detection",
+    value=False
+)
+
+target_voltage = st.sidebar.number_input(
+    "Voltage (V)",
+    value=0.0,
+    format="%.4f"
+)
+
+peak_choice = st.sidebar.selectbox(
+    "Which Curve?",
+    ["Top Curve", "Bottom Curve"]
+)
+
+# =========================
 # Upload Files
 # =========================
 uploaded_files = st.file_uploader(
@@ -98,6 +119,8 @@ if data_store:
 
     ax.set_facecolor(bg_color)
 
+    peak_results = []
+
     for i, (name, voltage, current) in enumerate(data_store):
 
         with st.expander(f"{name} Settings"):
@@ -124,6 +147,77 @@ if data_store:
             label=label,
             linewidth=line_width,
             color=color
+        )
+
+        # =========================
+        # Peak Current Extraction
+        # =========================
+        if enable_peak:
+
+            try:
+
+                voltage = np.array(voltage)
+                current = np.array(current)
+
+                # Find closest voltage index
+                idx = np.argmin(
+                    np.abs(voltage - target_voltage)
+                )
+
+                current_at_voltage = current[idx]
+
+                peak_results.append({
+                    "label": label,
+                    "voltage": voltage[idx],
+                    "current": current_at_voltage,
+                    "color": color
+                })
+
+            except:
+                pass
+
+    # =========================
+    # Find Top or Bottom Curve
+    # =========================
+    if enable_peak and len(peak_results) > 0:
+
+        if peak_choice == "Top Curve":
+
+            selected_peak = max(
+                peak_results,
+                key=lambda x: x["current"]
+            )
+
+        else:
+
+            selected_peak = min(
+                peak_results,
+                key=lambda x: x["current"]
+            )
+
+        # Mark selected point
+        ax.scatter(
+            selected_peak["voltage"],
+            selected_peak["current"],
+            color=selected_peak["color"],
+            edgecolors="black",
+            s=120,
+            zorder=10
+        )
+
+        # Display Result
+        st.subheader("📌 Selected Peak")
+
+        st.write(
+            f"**Curve:** {selected_peak['label']}"
+        )
+
+        st.write(
+            f"**Voltage:** {selected_peak['voltage']:.4f} V"
+        )
+
+        st.write(
+            f"**Current:** {selected_peak['current']:.4f} µA"
         )
 
     # =========================
