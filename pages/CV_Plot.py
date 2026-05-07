@@ -1,12 +1,21 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from streamlit_plotly_events import plotly_events
+import matplotlib.pyplot as plt
 
 st.set_page_config(layout="wide")
+st.title("🔬 CV Overlay Tool")
 
-st.title("🔬 Interactive CV Analysis Tool")
+# =========================
+# Theme
+# =========================
+bg_choice = st.sidebar.selectbox(
+    "Background Color",
+    ["White", "Black"]
+)
+
+bg_color = "white" if bg_choice == "White" else "black"
+text_color = "black" if bg_color == "white" else "white"
 
 # =========================
 # Upload Files
@@ -17,16 +26,13 @@ uploaded_files = st.file_uploader(
     accept_multiple_files=True
 )
 
-enable_calibration = st.sidebar.checkbox(
-    "Enable Calibration Curve",
-    value=False
-)
+color_palette = plt.get_cmap("tab10")
 
+# =========================
+# Data Store
+# =========================
 data_store = []
 
-# =========================
-# Read Files
-# =========================
 if uploaded_files:
 
     for file in uploaded_files:
@@ -35,7 +41,7 @@ if uploaded_files:
             df = pd.read_csv(file)
 
         except:
-            st.warning(f"Failed loading {file.name}")
+            st.warning(f"{file.name} failed to load")
             continue
 
         possible_voltage = [
@@ -50,29 +56,47 @@ if uploaded_files:
             "Current"
         ]
 
-        v_col = next((c for c in possible_voltage if c in df.columns), None)
-        i_col = next((c for c in possible_current if c in df.columns), None)
+        v_col = next(
+            (c for c in possible_voltage if c in df.columns),
+            None
+        )
+
+        i_col = next(
+            (c for c in possible_current if c in df.columns),
+            None
+        )
 
         if v_col is None or i_col is None:
-            st.warning(f"{file.name} missing columns")
+
+            st.warning(
+                f"{file.name} missing required columns"
+            )
+
             continue
 
+        df.dropna(
+            subset=[v_col, i_col],
+            inplace=True
+        )
+
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6
+        current = df[i_col].values * 1e6  # µA
 
         data_store.append(
             (file.name, voltage, current)
         )
 
 # =========================
-# Plot Interactive CV
+# Plot CV Overlay
 # =========================
 if data_store:
 
-    fig = go.Figure()
+    fig, ax = plt.subplots(
+        figsize=(8, 6),
+        facecolor=bg_color
+    )
 
-    concentrations = []
-    picked_currents = []
+    ax.set_facecolor(bg_color)
 
     for i, (name, voltage, current) in enumerate(data_store):
 
@@ -84,127 +108,60 @@ if data_store:
                 key=f"label_{i}"
             )
 
-            if enable_calibration:
-
-                conc = st.number_input(
-                    f"Concentration (µM) - Curve {i}",
-                    value=float(i + 1),
-                    key=f"conc_{i}"
-                )
-
-        fig.add_trace(
-            go.Scatter(
-                x=voltage,
-                y=current,
-                mode="lines",
-                name=label,
-                line=dict(width=3),
+            line_width = st.slider(
+                f"Line Width {i}",
+                min_value=1,
+                max_value=6,
+                value=2,
+                key=f"lw_{i}"
             )
+
+        color = color_palette(i % color_palette.N)
+
+        ax.plot(
+            voltage,
+            current,
+            label=label,
+            linewidth=line_width,
+            color=color
         )
 
-    fig.update_layout(
-        title="Interactive CV Overlay",
-        xaxis_title="Voltage (V)",
-        yaxis_title="Current (µA)",
-        height=700
+    # =========================
+    # Styling
+    # =========================
+    ax.set_xlabel(
+        "Voltage (V)",
+        color=text_color,
+        fontsize=14
     )
 
-    st.markdown("## Click on peak points")
-
-    selected_points = plotly_events(
-        fig,
-        click_event=True,
-        hover_event=False,
-        select_event=False
+    ax.set_ylabel(
+        "Current (µA)",
+        color=text_color,
+        fontsize=14
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    ax.set_title(
+        "CV Overlay",
+        color=text_color,
+        fontsize=16
+    )
 
-    # =========================
-    # Selected Points
-    # =========================
-    if selected_points:
+    ax.tick_params(
+        colors=text_color,
+        labelsize=12
+    )
 
-        st.subheader("📍 Selected Points")
+    for spine in ax.spines.values():
+        spine.set_color(text_color)
 
-        calibration_data = []
+    legend = ax.legend(
+        facecolor=bg_color,
+        edgecolor=text_color,
+        fontsize=10
+    )
 
-        for idx, point in enumerate(selected_points):
+    for text in legend.get_texts():
+        text.set_color(text_color)
 
-            x = point["x"]
-            y = point["y"]
-            curve_number = point["curveNumber"]
-
-            curve_name = data_store[curve_number][0]
-
-            st.write(
-                f"Curve: {curve_name} | "
-                f"Voltage: {x:.4f} V | "
-                f"Current: {y:.4f} µA"
-            )
-
-            if enable_calibration:
-
-                conc = st.number_input(
-                    f"Concentration for selected point {idx}",
-                    value=float(idx + 1),
-                    key=f"calib_{idx}"
-                )
-
-                calibration_data.append(
-                    [conc, y]
-                )
-
-        # =========================
-        # Calibration Curve
-        # =========================
-        if enable_calibration and len(calibration_data) > 1:
-
-            calib_df = pd.DataFrame(
-                calibration_data,
-                columns=["Concentration", "Current"]
-            )
-
-            conc = calib_df["Concentration"].values
-            curr = calib_df["Current"].values
-
-            slope, intercept = np.polyfit(conc, curr, 1)
-
-            fit = slope * conc + intercept
-
-            r2 = 1 - (
-                np.sum((curr - fit) ** 2)
-                /
-                np.sum((curr - np.mean(curr)) ** 2)
-            )
-
-            fig2 = go.Figure()
-
-            fig2.add_trace(
-                go.Scatter(
-                    x=conc,
-                    y=curr,
-                    mode="markers",
-                    name="Data"
-                )
-            )
-
-            fig2.add_trace(
-                go.Scatter(
-                    x=conc,
-                    y=fit,
-                    mode="lines",
-                    name="Fit"
-                )
-            )
-
-            fig2.update_layout(
-                title=f"Sensitivity = {slope:.4f} µA/µM | R² = {r2:.4f}",
-                xaxis_title="Concentration (µM)",
-                yaxis_title="Peak Current (µA)"
-            )
-
-            st.plotly_chart(fig2, use_container_width=True)
-
-            st.write(f"### Sensitivity: {slope:.4f} µA/µM")
-            st.write(f"### R²: {r2:.4f}")
+    st.pyplot(fig)
