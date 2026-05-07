@@ -18,7 +18,7 @@ bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
 
 # =========================
-# Enable Peak Detection
+# Peak Detection Toggle
 # =========================
 enable_peak = st.sidebar.checkbox(
     "Enable Peak Current Detection",
@@ -26,7 +26,7 @@ enable_peak = st.sidebar.checkbox(
 )
 
 # =========================
-# Upload Files
+# Upload CSV Files
 # =========================
 uploaded_files = st.file_uploader(
     "Upload CV CSV files",
@@ -37,7 +37,7 @@ uploaded_files = st.file_uploader(
 color_palette = plt.get_cmap("tab10")
 
 # =========================
-# Data Store
+# Store Data
 # =========================
 data_store = []
 
@@ -52,6 +52,7 @@ if uploaded_files:
             st.warning(f"{file.name} failed to load")
             continue
 
+        # Possible column names
         possible_voltage = [
             "Working Electrode (V)",
             "Ewe/V",
@@ -88,31 +89,34 @@ if uploaded_files:
         )
 
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6  # µA
+        current = df[i_col].values * 1e6  # Convert to µA
 
         data_store.append(
             (file.name, voltage, current)
         )
 
 # =========================
-# Plot CV Overlay
+# Plotting
 # =========================
 if data_store:
 
     fig, ax = plt.subplots(
-        figsize=(8, 6),
+        figsize=(9, 7),
         facecolor=bg_color
     )
 
     ax.set_facecolor(bg_color)
 
     # =========================
-    # Loop through curves
+    # Loop Through Files
     # =========================
     for i, (name, voltage, current) in enumerate(data_store):
 
         color = color_palette(i % color_palette.N)
 
+        # =========================
+        # Settings Per Curve
+        # =========================
         with st.expander(f"{name} Settings"):
 
             label = st.text_input(
@@ -130,7 +134,7 @@ if data_store:
             )
 
             # =========================
-            # Peak Options PER CURVE
+            # Peak Detection Inputs
             # =========================
             if enable_peak:
 
@@ -142,8 +146,11 @@ if data_store:
                 )
 
                 curve_part = st.selectbox(
-                    f"Choose Curve Part {i}",
-                    ["Top (Oxidation)", "Bottom (Reduction)"],
+                    f"Select Branch {i}",
+                    [
+                        "Top (Oxidation)",
+                        "Bottom (Reduction)"
+                    ],
                     key=f"curve_part_{i}"
                 )
 
@@ -166,51 +173,73 @@ if data_store:
             voltage = np.array(voltage)
             current = np.array(current)
 
-            # Split into forward/reverse
+            # Turning point
             turning_idx = np.argmax(voltage)
 
-            if curve_part == "Top (Oxidation)":
+            # =========================
+            # Safety fallback
+            # =========================
+            if (
+                turning_idx <= 1
+                or
+                turning_idx >= len(voltage) - 1
+            ):
 
-                v_use = voltage[:turning_idx]
-                i_use = current[:turning_idx]
+                v_use = voltage
+                i_use = current
 
             else:
 
-                v_use = voltage[turning_idx:]
-                i_use = current[turning_idx:]
+                if curve_part == "Top (Oxidation)":
 
-            # Find closest voltage
-            idx = np.argmin(
-                np.abs(v_use - peak_voltage)
-            )
+                    v_use = voltage[:turning_idx]
+                    i_use = current[:turning_idx]
 
-            selected_voltage = v_use[idx]
-            selected_current = i_use[idx]
+                else:
 
-            # Plot marker
-            ax.scatter(
-                selected_voltage,
-                selected_current,
-                color=color,
-                edgecolors="black",
-                s=120,
-                zorder=10
-            )
+                    v_use = voltage[turning_idx:]
+                    i_use = current[turning_idx:]
 
-            # Show values
-            st.write(
-                f"### {label}"
-            )
+            # =========================
+            # Additional Safety
+            # =========================
+            if len(v_use) > 0:
 
-            st.write(
-                f"Selected Voltage: "
-                f"{selected_voltage:.4f} V"
-            )
+                idx = np.argmin(
+                    np.abs(v_use - peak_voltage)
+                )
 
-            st.write(
-                f"Peak Current: "
-                f"{selected_current:.4f} µA"
-            )
+                selected_voltage = v_use[idx]
+                selected_current = i_use[idx]
+
+                # Plot Marker
+                ax.scatter(
+                    selected_voltage,
+                    selected_current,
+                    color=color,
+                    edgecolors="black",
+                    s=140,
+                    zorder=10
+                )
+
+                # Display Values
+                st.write(f"### {label}")
+
+                st.write(
+                    f"Selected Voltage: "
+                    f"{selected_voltage:.4f} V"
+                )
+
+                st.write(
+                    f"Peak Current: "
+                    f"{selected_current:.4f} µA"
+                )
+
+            else:
+
+                st.warning(
+                    f"Could not detect branch for {label}"
+                )
 
     # =========================
     # Styling
@@ -218,19 +247,19 @@ if data_store:
     ax.set_xlabel(
         "Voltage (V)",
         color=text_color,
-        fontsize=14
+        fontsize=15
     )
 
     ax.set_ylabel(
         "Current (µA)",
         color=text_color,
-        fontsize=14
+        fontsize=15
     )
 
     ax.set_title(
         "CV Overlay",
         color=text_color,
-        fontsize=16
+        fontsize=20
     )
 
     ax.tick_params(
@@ -244,7 +273,7 @@ if data_store:
     legend = ax.legend(
         facecolor=bg_color,
         edgecolor=text_color,
-        fontsize=10
+        fontsize=11
     )
 
     for text in legend.get_texts():
