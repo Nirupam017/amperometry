@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 st.set_page_config(layout="wide")
 st.title("🔬 CV Overlay Tool")
@@ -9,6 +10,7 @@ st.title("🔬 CV Overlay Tool")
 # =========================
 # Theme
 # =========================
+
 bg_choice = st.sidebar.selectbox(
     "Background Color",
     ["White", "Black"]
@@ -20,14 +22,39 @@ text_color = "black" if bg_color == "white" else "white"
 # =========================
 # Peak Detection Toggle
 # =========================
+
 enable_peak = st.sidebar.checkbox(
     "Enable Peak Current Detection",
     value=False
 )
 
 # =========================
+# Inset Zoom Toggle
+# =========================
+
+enable_inset = st.sidebar.checkbox(
+    "Enable Inset Zoom",
+    value=False
+)
+
+if enable_inset:
+
+    inset_xmin = st.sidebar.number_input(
+        "Inset Min Voltage (V)",
+        value=-0.20,
+        format="%.3f"
+    )
+
+    inset_xmax = st.sidebar.number_input(
+        "Inset Max Voltage (V)",
+        value=0.20,
+        format="%.3f"
+    )
+
+# =========================
 # Upload CSV Files
 # =========================
+
 uploaded_files = st.file_uploader(
     "Upload CV CSV files",
     type="csv",
@@ -39,6 +66,7 @@ color_palette = plt.get_cmap("tab10")
 # =========================
 # Store Data
 # =========================
+
 data_store = []
 
 if uploaded_files:
@@ -48,11 +76,10 @@ if uploaded_files:
         try:
             df = pd.read_csv(file)
 
-        except:
+        except Exception:
             st.warning(f"{file.name} failed to load")
             continue
 
-        # Possible column names
         possible_voltage = [
             "Working Electrode (V)",
             "Ewe/V",
@@ -80,7 +107,6 @@ if uploaded_files:
             st.warning(
                 f"{file.name} missing required columns"
             )
-
             continue
 
         df.dropna(
@@ -89,7 +115,7 @@ if uploaded_files:
         )
 
         voltage = df[v_col].values
-        current = df[i_col].values * 1e6  # Convert to µA
+        current = df[i_col].values * 1e6
 
         data_store.append(
             (file.name, voltage, current)
@@ -98,6 +124,7 @@ if uploaded_files:
 # =========================
 # Plotting
 # =========================
+
 if data_store:
 
     fig, ax = plt.subplots(
@@ -108,15 +135,28 @@ if data_store:
     ax.set_facecolor(bg_color)
 
     # =========================
+    # Create Inset Axis
+    # =========================
+
+    if enable_inset:
+
+        axins = inset_axes(
+            ax,
+            width="35%",
+            height="35%",
+            loc="upper right"
+        )
+
+        axins.set_facecolor(bg_color)
+
+    # =========================
     # Loop Through Files
     # =========================
+
     for i, (name, voltage, current) in enumerate(data_store):
 
         color = color_palette(i % color_palette.N)
 
-        # =========================
-        # Settings Per Curve
-        # =========================
         with st.expander(f"{name} Settings"):
 
             label = st.text_input(
@@ -133,9 +173,6 @@ if data_store:
                 key=f"lw_{i}"
             )
 
-            # =========================
-            # Peak Detection Inputs
-            # =========================
             if enable_peak:
 
                 peak_voltage = st.number_input(
@@ -155,8 +192,9 @@ if data_store:
                 )
 
         # =========================
-        # Plot Curve
+        # Main Plot
         # =========================
+
         ax.plot(
             voltage,
             current,
@@ -166,19 +204,37 @@ if data_store:
         )
 
         # =========================
+        # Inset Plot
+        # =========================
+
+        if enable_inset:
+
+            mask = (
+                (voltage >= inset_xmin)
+                &
+                (voltage <= inset_xmax)
+            )
+
+            if np.any(mask):
+
+                axins.plot(
+                    voltage[mask],
+                    current[mask],
+                    linewidth=line_width,
+                    color=color
+                )
+
+        # =========================
         # Peak Detection
         # =========================
+
         if enable_peak:
 
             voltage = np.array(voltage)
             current = np.array(current)
 
-            # Turning point
             turning_idx = np.argmax(voltage)
 
-            # =========================
-            # Safety fallback
-            # =========================
             if (
                 turning_idx <= 1
                 or
@@ -200,9 +256,6 @@ if data_store:
                     v_use = voltage[turning_idx:]
                     i_use = current[turning_idx:]
 
-            # =========================
-            # Additional Safety
-            # =========================
             if len(v_use) > 0:
 
                 idx = np.argmin(
@@ -212,7 +265,6 @@ if data_store:
                 selected_voltage = v_use[idx]
                 selected_current = i_use[idx]
 
-                # Plot Marker
                 ax.scatter(
                     selected_voltage,
                     selected_current,
@@ -222,7 +274,6 @@ if data_store:
                     zorder=10
                 )
 
-                # Display Values
                 st.write(f"### {label}")
 
                 st.write(
@@ -242,8 +293,9 @@ if data_store:
                 )
 
     # =========================
-    # Styling
+    # Main Axis Styling
     # =========================
+
     ax.set_xlabel(
         "Voltage (V)",
         color=text_color,
@@ -278,5 +330,56 @@ if data_store:
 
     for text in legend.get_texts():
         text.set_color(text_color)
+
+    # =========================
+    # Inset Formatting
+    # =========================
+
+    if enable_inset:
+
+        axins.set_xlim(
+            inset_xmin,
+            inset_xmax
+        )
+
+        axins.tick_params(
+            colors=text_color,
+            labelsize=8
+        )
+
+        for spine in axins.spines.values():
+            spine.set_color(text_color)
+
+        all_y = []
+
+        for _, voltage, current in data_store:
+
+            mask = (
+                (voltage >= inset_xmin)
+                &
+                (voltage <= inset_xmax)
+            )
+
+            all_y.extend(current[mask])
+
+        if len(all_y) > 0:
+
+            ymin = min(all_y)
+            ymax = max(all_y)
+
+            margin = 0.10 * (ymax - ymin)
+
+            if margin == 0:
+                margin = 1
+
+            axins.set_ylim(
+                ymin - margin,
+                ymax + margin
+            )
+
+        ax.indicate_inset_zoom(
+            axins,
+            edgecolor=text_color
+        )
 
     st.pyplot(fig)
