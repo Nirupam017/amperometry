@@ -1,8 +1,8 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 st.set_page_config(layout="wide")
 st.title("🔬 CV Overlay Tool")
@@ -20,33 +20,24 @@ bg_color = "white" if bg_choice == "White" else "black"
 text_color = "black" if bg_color == "white" else "white"
 
 # =========================
-# Peak Detection Toggle
+# Zoom Plot Settings
 # =========================
 
-enable_peak = st.sidebar.checkbox(
-    "Enable Peak Current Detection",
+enable_zoom = st.sidebar.checkbox(
+    "Show Zoom Plot",
     value=False
 )
 
-# =========================
-# Inset Zoom Toggle
-# =========================
+if enable_zoom:
 
-enable_inset = st.sidebar.checkbox(
-    "Enable Inset Zoom",
-    value=False
-)
-
-if enable_inset:
-
-    inset_xmin = st.sidebar.number_input(
-        "Inset Min Voltage (V)",
-        value=-0.20,
+    zoom_xmin = st.sidebar.number_input(
+        "Zoom Min Voltage (V)",
+        value=0.00,
         format="%.3f"
     )
 
-    inset_xmax = st.sidebar.number_input(
-        "Inset Max Voltage (V)",
+    zoom_xmax = st.sidebar.number_input(
+        "Zoom Max Voltage (V)",
         value=0.20,
         format="%.3f"
     )
@@ -127,31 +118,26 @@ if uploaded_files:
 
 if data_store:
 
-    fig, ax = plt.subplots(
-        figsize=(9, 7),
-        facecolor=bg_color
-    )
+    if enable_zoom:
 
-    ax.set_facecolor(bg_color)
-
-    # =========================
-    # Create Inset Axis
-    # =========================
-
-    if enable_inset:
-
-        axins = inset_axes(
-            ax,
-            width="35%",
-            height="35%",
-            loc="upper right"
+        fig, (ax, ax_zoom) = plt.subplots(
+            1,
+            2,
+            figsize=(14, 7),
+            facecolor=bg_color,
+            gridspec_kw={"width_ratios": [3, 1]}
         )
 
-        axins.set_facecolor(bg_color)
+        ax_zoom.set_facecolor(bg_color)
 
-    # =========================
-    # Loop Through Files
-    # =========================
+    else:
+
+        fig, ax = plt.subplots(
+            figsize=(9, 7),
+            facecolor=bg_color
+        )
+
+    ax.set_facecolor(bg_color)
 
     for i, (name, voltage, current) in enumerate(data_store):
 
@@ -173,28 +159,6 @@ if data_store:
                 key=f"lw_{i}"
             )
 
-            if enable_peak:
-
-                peak_voltage = st.number_input(
-                    f"Voltage for Curve {i} (V)",
-                    value=0.0,
-                    format="%.4f",
-                    key=f"peak_voltage_{i}"
-                )
-
-                curve_part = st.selectbox(
-                    f"Select Branch {i}",
-                    [
-                        "Top (Oxidation)",
-                        "Bottom (Reduction)"
-                    ],
-                    key=f"curve_part_{i}"
-                )
-
-        # =========================
-        # Main Plot
-        # =========================
-
         ax.plot(
             voltage,
             current,
@@ -203,98 +167,23 @@ if data_store:
             color=color
         )
 
-        # =========================
-        # Inset Plot
-        # =========================
-
-        if enable_inset:
+        if enable_zoom:
 
             mask = (
-                (voltage >= inset_xmin)
+                (voltage >= zoom_xmin)
                 &
-                (voltage <= inset_xmax)
+                (voltage <= zoom_xmax)
             )
 
             if np.any(mask):
 
-                axins.plot(
+                ax_zoom.plot(
                     voltage[mask],
                     current[mask],
                     linewidth=line_width,
-                    color=color
-                )
-
-        # =========================
-        # Peak Detection
-        # =========================
-
-        if enable_peak:
-
-            voltage = np.array(voltage)
-            current = np.array(current)
-
-            turning_idx = np.argmax(voltage)
-
-            if (
-                turning_idx <= 1
-                or
-                turning_idx >= len(voltage) - 1
-            ):
-
-                v_use = voltage
-                i_use = current
-
-            else:
-
-                if curve_part == "Top (Oxidation)":
-
-                    v_use = voltage[:turning_idx]
-                    i_use = current[:turning_idx]
-
-                else:
-
-                    v_use = voltage[turning_idx:]
-                    i_use = current[turning_idx:]
-
-            if len(v_use) > 0:
-
-                idx = np.argmin(
-                    np.abs(v_use - peak_voltage)
-                )
-
-                selected_voltage = v_use[idx]
-                selected_current = i_use[idx]
-
-                ax.scatter(
-                    selected_voltage,
-                    selected_current,
                     color=color,
-                    edgecolors="black",
-                    s=140,
-                    zorder=10
+                    label=label
                 )
-
-                st.write(f"### {label}")
-
-                st.write(
-                    f"Selected Voltage: "
-                    f"{selected_voltage:.4f} V"
-                )
-
-                st.write(
-                    f"Peak Current: "
-                    f"{selected_current:.4f} µA"
-                )
-
-            else:
-
-                st.warning(
-                    f"Could not detect branch for {label}"
-                )
-
-    # =========================
-    # Main Axis Styling
-    # =========================
 
     ax.set_xlabel(
         "Voltage (V)",
@@ -331,33 +220,44 @@ if data_store:
     for text in legend.get_texts():
         text.set_color(text_color)
 
-    # =========================
-    # Inset Formatting
-    # =========================
+    if enable_zoom:
 
-    if enable_inset:
-
-        axins.set_xlim(
-            inset_xmin,
-            inset_xmax
+        ax_zoom.set_title(
+            "Zoomed Region",
+            color=text_color,
+            fontsize=14
         )
 
-        axins.tick_params(
-            colors=text_color,
-            labelsize=8
+        ax_zoom.set_xlabel(
+            "Voltage (V)",
+            color=text_color
         )
 
-        for spine in axins.spines.values():
+        ax_zoom.set_ylabel(
+            "Current (µA)",
+            color=text_color
+        )
+
+        ax_zoom.tick_params(
+            colors=text_color
+        )
+
+        for spine in ax_zoom.spines.values():
             spine.set_color(text_color)
+
+        ax_zoom.set_xlim(
+            zoom_xmin,
+            zoom_xmax
+        )
 
         all_y = []
 
         for _, voltage, current in data_store:
 
             mask = (
-                (voltage >= inset_xmin)
+                (voltage >= zoom_xmin)
                 &
-                (voltage <= inset_xmax)
+                (voltage <= zoom_xmax)
             )
 
             all_y.extend(current[mask])
@@ -372,14 +272,10 @@ if data_store:
             if margin == 0:
                 margin = 1
 
-            axins.set_ylim(
+            ax_zoom.set_ylim(
                 ymin - margin,
                 ymax + margin
             )
 
-        ax.indicate_inset_zoom(
-            axins,
-            edgecolor=text_color
-        )
-
+    plt.tight_layout()
     st.pyplot(fig)
